@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CommandDeck</title>
+  <meta name="description" content="Tile-based hotkey dashboard for Windows 11" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="src/style.css" />
+</head>
+<body>
+
+  <!-- ── Custom Titlebar ─────────────────────────────── -->
+  <div id="titlebar">
+    <div id="titlebar-left">
+      <div id="titlebar-logo">⬡</div>
+      <span id="titlebar-title">COMMAND<span class="accent">DECK</span></span>
+    </div>
+    <div id="titlebar-drag" aria-label="Drag to move window"></div>
+    <div id="titlebar-controls">
+      <button id="btn-minimize" title="Minimize" aria-label="Minimize">─</button>
+      <button id="btn-maximize" title="Maximize" aria-label="Maximize">□</button>
+      <button id="btn-close" title="Close" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+  <!-- ── App Layout ──────────────────────────────────── -->
+  <div id="app">
+
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <nav id="sidebar-nav" aria-label="Category navigation"></nav>
+      <div id="sidebar-footer">
+        <button id="btn-add-tile" class="sidebar-action" title="Add Tile" aria-label="Add Tile">
+          <span class="sidebar-action-icon">+</span>
+        </button>
+        <button id="btn-settings" class="sidebar-action" title="Settings" aria-label="Settings">
+          <span class="sidebar-action-icon">⚙</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div id="main">
+
+      <!-- Header -->
+      <header id="header">
+        <div id="header-search-wrap">
+          <span id="search-icon" aria-hidden="true">⌕</span>
+          <input
+            id="search-input"
+            type="search"
+            placeholder="Search tiles…"
+            aria-label="Search tiles"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+        <div id="header-right">
+          <span id="header-profile">USER</span>
+        </div>
+      </header>
+
+      <!-- Tile Canvas -->
+      <main id="tile-canvas" aria-label="Tile dashboard"></main>
+
+    </div>
+  </div>
+
+  <!-- ── Edit Modal ──────────────────────────────────── -->
+  <div id="edit-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div id="edit-modal-backdrop"></div>
+    <div id="edit-modal-panel">
+      <div id="edit-modal-header">
+        <h2 id="modal-title">Edit Tile</h2>
+        <button id="btn-modal-close" aria-label="Close editor">✕</button>
+      </div>
+      <div id="edit-modal-body">
+        <!-- Dynamically populated by app.js -->
+      </div>
+      <div id="edit-modal-footer">
+        <button id="btn-modal-delete" class="btn-danger">Delete Tile</button>
+        <div class="spacer"></div>
+        <button id="btn-modal-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-modal-save" class="btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toast Notifications ─────────────────────────── -->
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- ── Renderer ────────────────────────────────────── -->
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>

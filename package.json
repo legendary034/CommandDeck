@@ -1,0 +1,37 @@
+{
+  "name": "command-deck",
+  "version": "1.0.0",
+  "description": "Tile-based hotkey dashboard for Windows 11",
+  "main": "electron.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder --win"
+  },
+  "dependencies": {
+    "systeminformation": "^5.22.7"
+  },
+  "devDependencies": {
+    "electron": "^33.4.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.commanddeck.app",
+    "productName": "CommandDeck",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.cache",
+      "!dist"
+    ],
+    "win": {
+      "target": ["nsis", "portable"],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

@@ -1,0 +1,166 @@
+{
+  "version": "1.0",
+  "categories": ["All", "System", "Media", "Apps", "Widgets"],
+  "activeCategory": "All",
+  "tiles": [
+    {
+      "id": "clock",
+      "type": "clock",
+      "size": "wide",
+      "color": "#0f1fb5",
+      "label": "CLOCK"
+    },
+    {
+      "id": "mute",
+      "type": "media",
+      "action": "mute",
+      "size": "small",
+      "color": "#5b1e8a",
+      "label": "",
+      "icon": "volume-x"
+    },
+    {
+      "id": "weather",
+      "type": "weather",
+      "size": "wide",
+      "color": "#0a0f2e",
+      "label": "WEATHER",
+      "config": { "city": "", "lat": null, "lon": null, "unit": "fahrenheit" }
+    },
+    {
+      "id": "media-prev",
+      "type": "media",
+      "action": "prev",
+      "size": "small",
+      "color": "#1539a8",
+      "label": "",
+      "icon": "skip-back"
+    },
+    {
+      "id": "media-play",
+      "type": "media",
+      "action": "play-pause",
+      "size": "small",
+      "color": "#0f1fb5",
+      "label": "",
+      "icon": "play"
+    },
+    {
+      "id": "media-next",
+      "type": "media",
+      "action": "next",
+      "size": "small",
+      "color": "#1539a8",
+      "label": "",
+      "icon": "skip-forward"
+    },
+    {
+      "id": "cpu-clock",
+      "type": "stat",
+      "stat": "cpuSpeed",
+      "size": "small",
+      "color": "#0a1a3a",
+      "label": "CPU CLOCK",
+      "unit": "MHZ"
+    },
+    {
+      "id": "cpu-usage",
+      "type": "stat",
+      "stat": "cpuLoad",
+      "size": "small",
+      "color": "#0a1a3a",
+      "label": "CPU USAGE",
+      "unit": "%"
+    },
+    {
+      "id": "gamepad",
+      "type": "action",
+      "size": "small",
+      "color": "#1539a8",
+      "label": "GAMING",
+      "icon": "gamepad",
+      "command": ""
+    },
+    {
+      "id": "music-app",
+      "type": "action",
+      "size": "small",
+      "color": "#1539a8",
+      "label": "MUSIC",
+      "icon": "music",
+      "command": ""
+    },
+    {
+      "id": "flame",
+      "type": "action",
+      "size": "small",
+      "color": "#1539a8",
+      "label": "HOTSPOT",
+      "icon": "flame",
+      "command": ""
+    },
+    {
+      "id": "cpu-temp",
+      "type": "stat",
+      "stat": "cpuTemp",
+      "size": "small",
+      "color": "#0a1a3a",
+      "label": "CPU TEMP",
+      "unit": "°C"
+    },
+    {
+      "id": "gpu-temp",
+      "type": "stat",
+      "stat": "gpuTemp",
+      "size": "small",
+      "color": "#0a1a3a",
+      "label": "GPU TEMP",
+      "unit": "°C"
+    },
+    {
+      "id": "live-streams",
+      "type": "action",
+      "size": "wide",
+      "color": "#4c1d95",
+      "label": "LIVE STREAMS",
+      "icon": "radio",
+      "command": ""
+    },
+    {
+      "id": "layers",
+      "type": "action",
+      "size": "small",
+      "color": "#5b21b6",
+      "label": "",
+      "icon": "layers",
+      "command": ""
+    },
+    {
+      "id": "work-macros",
+      "type": "action",
+      "size": "small",
+      "color": "#9d174d",
+      "label": "WORK MACROS",
+      "icon": "folder-open",
+      "command": ""
+    },
+    {
+      "id": "cpu-power",
+      "type": "stat",
+      "stat": "cpuPower",
+      "size": "small",
+      "color": "#881337",
+      "label": "CPU POWER",
+      "unit": "W"
+    },
+    {
+      "id": "mem-clock",
+      "type": "stat",
+      "stat": "memClock",
+      "size": "small",
+      "color": "#0a1a3a",
+      "label": "MEM CLOCK",
+      "unit": "MHZ"
+    }
+  ]
+}
