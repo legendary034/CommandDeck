@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('commandDeck', {
   getDisplays: () => ipcRenderer.invoke('get-displays'),
   setDisplay: (idx) => ipcRenderer.invoke('set-display', idx),
 
+  // Window behavior (always-on-top + hide header)
+  setWindowBehavior: (opts) => ipcRenderer.invoke('set-window-behavior', opts),
+
   // OS operations
   launchApp: (path, args) => ipcRenderer.invoke('launch-app', { path, args }),
   runCommand: (command) => ipcRenderer.invoke('run-command', command),
@@ -29,5 +32,10 @@ contextBridge.exposeInMainWorld('commandDeck', {
   },
   removeStatsListener: () => {
     ipcRenderer.removeAllListeners('stats-update');
+  },
+
+  // Window behavior push from main (apply on startup + live changes)
+  onApplyWindowBehavior: (callback) => {
+    ipcRenderer.on('apply-window-behavior', (_event, data) => callback(data));
   },
 });

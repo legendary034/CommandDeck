@@ -6,13 +6,28 @@ const fs      = require('fs');
 const { exec, spawn } = require('child_process');
 
 // ── Paths ────────────────────────────────────────────────────────────────────
-const CONFIG_PATH    = path.join(__dirname, 'config', 'tiles.json');
-const SETTINGS_PATH  = path.join(__dirname, 'config', 'settings.json');
+// CONFIG_PATH: bundled tiles config (read from resources; copied to userData on first run)
+const CONFIG_PATH_BUNDLED = path.join(__dirname, 'config', 'tiles.json');
+
+// SETTINGS_PATH: always lives in writable userData directory
+// (e.g. %APPDATA%\CommandDeck\settings.json) so it works in both dev and prod.
+function getSettingsPath() {
+  const userData = app.getPath('userData');
+  if (!fs.existsSync(userData)) fs.mkdirSync(userData, { recursive: true });
+  return path.join(userData, 'settings.json');
+}
+
+function getConfigPath() {
+  // Allow tiles.json in userData to override the bundled one
+  const userCfg = path.join(app.getPath('userData'), 'tiles.json');
+  if (fs.existsSync(userCfg)) return userCfg;
+  return CONFIG_PATH_BUNDLED;
+}
 
 // ── Settings helpers ──────────────────────────────────────────────────────────
 function readSettings() {
   try {
-    return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+    return JSON.parse(fs.readFileSync(getSettingsPath(), 'utf8'));
   } catch {
     return {};
   }
@@ -20,11 +35,14 @@ function readSettings() {
 
 function writeSettingsSync(data) {
   try {
-    const dir = path.dirname(SETTINGS_PATH);
+    const settingsPath = getSettingsPath();
+    const dir = path.dirname(settingsPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const current = readSettings();
-    fs.writeFileSync(SETTINGS_PATH, JSON.stringify({ ...current, ...data }, null, 2), 'utf8');
-  } catch { /* ignore */ }
+    fs.writeFileSync(settingsPath, JSON.stringify({ ...current, ...data }, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[CommandDeck] Failed to write settings:', err.message);
+  }
 }
 
 // ── Window ───────────────────────────────────────────────────────────────────
@@ -62,8 +80,24 @@ function createWindow() {
       mainWindow.setBounds({ x, y, width, height });
     }
 
+    // Apply always-on-top BEFORE showing.
+    // 'screen-saver' is the highest window level on Windows — it stays above
+    // browsers, taskbar, and system notifications, effectively reserving the
+    // monitor exclusively for CommandDeck when enabled.
+    if (settings.alwaysOnTop) {
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    }
+
     mainWindow.show();
     mainWindow.setFullScreen(true);
+
+    // Push window behavior flags to renderer so it can apply CSS immediately
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow.webContents.send('apply-window-behavior', {
+        hideHeader:  !!settings.hideHeader,
+        alwaysOnTop: !!settings.alwaysOnTop,
+      });
+    });
   });
 
   mainWindow.on('closed', () => {
@@ -159,7 +193,7 @@ function sendMediaKey(action) {
 // ── IPC Handlers ─────────────────────────────────────────────────────────────
 ipcMain.handle('read-config', () => {
   try {
-    return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    return JSON.parse(fs.readFileSync(getConfigPath(), 'utf8'));
   } catch {
     return null;
   }
@@ -182,8 +216,8 @@ ipcMain.handle('get-displays', () => {
     index:     i,
     id:        d.id,
     label:     d.label || `Display ${i + 1}`,
-    width:     d.size.width,
-    height:    d.size.height,
+    width:     d.bounds.width,    // use bounds (physical px) not size (logical px)
+    height:    d.bounds.height,
     scaleFactor: d.scaleFactor,
     isPrimary: d.id === primary.id,
   }));
@@ -201,7 +235,8 @@ ipcMain.handle('set-display', (_e, idx) => {
     mainWindow.setBounds({ x, y, width, height });
     mainWindow.setFullScreen(true);
     writeSettingsSync({ preferredDisplay: idx });
-    return { success: true };
+    // Return target display dimensions so the renderer can adjust tile sizing
+    return { success: true, width: target.bounds.width, height: target.bounds.height };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -209,7 +244,9 @@ ipcMain.handle('set-display', (_e, idx) => {
 
 ipcMain.handle('write-config', (_e, config) => {
   try {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+    // Write config to userData so it's writable in the installed app
+    const userCfg = path.join(app.getPath('userData'), 'tiles.json');
+    fs.writeFileSync(userCfg, JSON.stringify(config, null, 2), 'utf8');
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -236,6 +273,35 @@ ipcMain.handle('run-command', (_e, command) => {
 });
 
 ipcMain.handle('send-media-key', (_e, action) => sendMediaKey(action));
+
+// ── Window Behavior (always-on-top + hide header) ─────────────────────────────
+ipcMain.handle('set-window-behavior', (_e, { alwaysOnTop, hideHeader }) => {
+  try {
+    if (!mainWindow) return { success: false, error: 'No window' };
+
+    // Persist both settings atomically
+    writeSettingsSync({ alwaysOnTop: !!alwaysOnTop, hideHeader: !!hideHeader });
+
+    // Apply always-on-top at the highest level ('screen-saver') so CommandDeck
+    // stays above every other application window on the monitor, effectively
+    // preventing accidental use of that display by any other program.
+    if (alwaysOnTop) {
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    } else {
+      mainWindow.setAlwaysOnTop(false);
+    }
+
+    // Push the behavior flags to the renderer so it can toggle the CSS live
+    mainWindow.webContents.send('apply-window-behavior', {
+      hideHeader:  !!hideHeader,
+      alwaysOnTop: !!alwaysOnTop,
+    });
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
 
 // Titlebar controls
 ipcMain.on('window-minimize', () => mainWindow?.minimize());

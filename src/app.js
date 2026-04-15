@@ -89,9 +89,12 @@ async function saveConfig() {
 }
 
 // ─── Dynamic Tile Sizing ───────────────────────────────────────────────────────────
-function applyTileSizing() {
-  const w = window.screen.width;
-  const h = window.screen.height;
+// Pass explicit w/h when switching displays: window.screen doesn't update
+// synchronously after the window is moved to a new display, so use the known
+// target display dimensions from the IPC response instead.
+function applyTileSizing(w, h) {
+  if (w === undefined) w = window.screen.width;
+  if (h === undefined) h = window.screen.height;
   const root = document.documentElement;
 
   // Determine tile dimensions based on native screen resolution.
@@ -112,6 +115,7 @@ function applyTileSizing() {
   root.style.setProperty('--tile-min-w', `${minW}px`);
   root.style.setProperty('--tile-row-h', `${rowH}px`);
 }
+
 
 
 // ─── Clock ────────────────────────────────────────────────────────────────────
@@ -475,6 +479,8 @@ function openEditModal(tile) {
   const modal = document.getElementById('edit-modal');
   const body  = document.getElementById('edit-modal-body');
 
+  const isWeather = tile.type === 'weather';
+
   const typeOpts = ['action','media','stat','clock','weather']
     .map(t => `<option value="${t}" ${t === tile.type ? 'selected' : ''}>${t}</option>`)
     .join('');
@@ -487,6 +493,9 @@ function openEditModal(tile) {
     .map(c => `<div class="color-swatch${c === tile.color ? ' active' : ''}" style="background:${c}" data-color="${c}" title="${c}"></div>`)
     .join('');
 
+  const currentCity = tile.config?.city || '';
+  const currentUnit = tile.config?.unit || 'fahrenheit';
+
   body.innerHTML = `
     <div class="form-group">
       <label class="form-label">Label</label>
@@ -496,14 +505,27 @@ function openEditModal(tile) {
       <label class="form-label">Type</label>
       <select class="form-select" id="ef-type">${typeOpts}</select>
     </div>
-    <div class="form-group" id="ef-icon-group">
+    <div class="form-group" id="ef-icon-group" ${isWeather ? 'style="display:none"' : ''}>
       <label class="form-label">Icon</label>
       <select class="form-select" id="ef-icon">${iconOpts}</select>
     </div>
-    <div class="form-group" id="ef-cmd-group">
+    <div class="form-group" id="ef-cmd-group" ${isWeather ? 'style="display:none"' : ''}>
       <label class="form-label">Command / App Path</label>
       <input class="form-input" id="ef-command" value="${tile.command || tile.path || ''}" placeholder="e.g. notepad.exe or powershell -Command …" />
     </div>
+    ${isWeather ? `
+    <div class="form-group" id="ef-weather-group">
+      <label class="form-label">City / Location</label>
+      <input class="form-input" id="ef-weather-city" value="${currentCity}" placeholder="e.g. Chicago, New York, London" />
+      <p class="form-hint">Changing the city will re-fetch weather on save.</p>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Temperature Unit</label>
+      <div class="unit-toggle-row">
+        <button class="unit-btn ${currentUnit === 'fahrenheit' ? 'active' : ''}" id="ef-unit-f" data-unit="fahrenheit">°F — Fahrenheit</button>
+        <button class="unit-btn ${currentUnit === 'celsius' ? 'active' : ''}" id="ef-unit-c" data-unit="celsius">°C — Celsius</button>
+      </div>
+    </div>` : ''}
     <div class="form-group">
       <label class="form-label">Size</label>
       <select class="form-select" id="ef-size">
@@ -533,25 +555,67 @@ function openEditModal(tile) {
     body.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
   });
 
+  // Weather unit toggle
+  let chosenUnit = currentUnit;
+  if (isWeather) {
+    body.querySelectorAll('.unit-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        body.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        chosenUnit = btn.dataset.unit;
+      });
+    });
+  }
+
   modal.classList.remove('hidden');
 
   // Save
   document.getElementById('btn-modal-save').onclick = async () => {
-    tile.label   = body.querySelector('#ef-label').value.trim();
-    tile.type    = body.querySelector('#ef-type').value;
-    tile.icon    = body.querySelector('#ef-icon').value;
-    tile.command = body.querySelector('#ef-command').value.trim();
-    tile.size    = body.querySelector('#ef-size').value;
-    tile.color   = chosenColor;
-    delete tile.path;
-    if (tile.command && !tile.command.includes(' ') && tile.command.endsWith('.exe')) {
-      tile.path = tile.command;
-      delete tile.command;
+    const newType = body.querySelector('#ef-type').value;
+    tile.label = body.querySelector('#ef-label').value.trim();
+    tile.type  = newType;
+    tile.size  = body.querySelector('#ef-size').value;
+    tile.color = chosenColor;
+
+    if (newType === 'weather') {
+      const newCity = (body.querySelector('#ef-weather-city')?.value || '').trim();
+      const cityChanged = newCity !== currentCity;
+      tile.config = {
+        ...(tile.config || {}),
+        city: newCity,
+        unit: chosenUnit,
+        // Clear cached coords when city changes so it re-geocodes
+        lat: cityChanged ? null : (tile.config?.lat ?? null),
+        lon: cityChanged ? null : (tile.config?.lon ?? null),
+      };
+      if (cityChanged) state.weather = null; // force re-fetch
+    } else {
+      tile.icon    = body.querySelector('#ef-icon').value;
+      tile.command = body.querySelector('#ef-command').value.trim();
+      delete tile.path;
+      if (tile.command && !tile.command.includes(' ') && tile.command.endsWith('.exe')) {
+        tile.path = tile.command;
+        delete tile.command;
+      }
     }
+
     await saveConfig();
     closeEditModal();
-    renderCanvas();
-    updateClock();
+
+    // Re-fetch weather if config changed
+    if (newType === 'weather') {
+      renderCanvas();
+      updateClock();
+      if (tile.config?.city) {
+        fetchWeather(tile).then((w) => {
+          state.weather = w;
+          renderCanvas();
+        });
+      }
+    } else {
+      renderCanvas();
+      updateClock();
+    }
     showToast('Tile saved', 'success');
   };
 }
@@ -591,18 +655,151 @@ document.getElementById('btn-modal-delete').addEventListener('click', async () =
   closeEditModal();
 });
 
+// ─── Default Tiles (for restore) ─────────────────────────────────────────────
+// Mirrors the bundled config/tiles.json defaults so we can restore any tile
+// the user accidentally deleted — without wiping any custom tiles.
+const DEFAULT_TILES = [
+  { id: 'clock',       type: 'clock',   size: 'wide',  color: '#0f1fb5', label: 'CLOCK' },
+  { id: 'mute',        type: 'media',   action: 'mute',       size: 'small', color: '#5b1e8a', label: '',         icon: 'volume-x' },
+  { id: 'weather',     type: 'weather', size: 'wide',  color: '#0a0f2e', label: 'WEATHER', config: { city: '', lat: null, lon: null, unit: 'fahrenheit' } },
+  { id: 'media-prev',  type: 'media',   action: 'prev',       size: 'small', color: '#1539a8', label: '',         icon: 'skip-back' },
+  { id: 'media-play',  type: 'media',   action: 'play-pause', size: 'small', color: '#0f1fb5', label: '',         icon: 'play' },
+  { id: 'media-next',  type: 'media',   action: 'next',       size: 'small', color: '#1539a8', label: '',         icon: 'skip-forward' },
+  { id: 'cpu-clock',   type: 'stat',    stat: 'cpuSpeed', size: 'small', color: '#0a1a3a', label: 'CPU CLOCK',  unit: 'MHZ' },
+  { id: 'cpu-usage',   type: 'stat',    stat: 'cpuLoad',  size: 'small', color: '#0a1a3a', label: 'CPU USAGE',  unit: '%' },
+  { id: 'cpu-temp',    type: 'stat',    stat: 'cpuTemp',  size: 'small', color: '#0a1a3a', label: 'CPU TEMP',   unit: '°C' },
+  { id: 'gpu-temp',    type: 'stat',    stat: 'gpuTemp',  size: 'small', color: '#0a1a3a', label: 'GPU TEMP',   unit: '°C' },
+  { id: 'cpu-power',   type: 'stat',    stat: 'cpuPower', size: 'small', color: '#881337', label: 'CPU POWER',  unit: 'W' },
+  { id: 'mem-clock',   type: 'stat',    stat: 'memClock', size: 'small', color: '#0a1a3a', label: 'MEM CLOCK',  unit: 'MHZ' },
+  { id: 'gamepad',     type: 'action',  size: 'small', color: '#1539a8', label: 'GAMING',       icon: 'gamepad',     command: '' },
+  { id: 'music-app',   type: 'action',  size: 'small', color: '#1539a8', label: 'MUSIC',        icon: 'music',       command: '' },
+  { id: 'flame',       type: 'action',  size: 'small', color: '#1539a8', label: 'HOTSPOT',      icon: 'flame',       command: '' },
+  { id: 'live-streams',type: 'action',  size: 'wide',  color: '#4c1d95', label: 'LIVE STREAMS', icon: 'radio',       command: '' },
+  { id: 'layers',      type: 'action',  size: 'small', color: '#5b21b6', label: '',             icon: 'layers',      command: '' },
+  { id: 'work-macros', type: 'action',  size: 'small', color: '#9d174d', label: 'WORK MACROS',  icon: 'folder-open', command: '' },
+];
+
+function getDeletedDefaults() {
+  const existing = new Set(state.config.tiles.map(t => t.id));
+  return DEFAULT_TILES.filter(t => !existing.has(t.id));
+}
+
+async function restoreDefaultTile(defaultTile) {
+  // Don't double-add
+  if (state.config.tiles.find(t => t.id === defaultTile.id)) return;
+  state.config.tiles.push({ ...defaultTile });
+  await saveConfig();
+  renderCanvas();
+  renderRestoreList();
+  showToast(`Restored: ${defaultTile.label || defaultTile.id}`, 'success');
+}
+
+async function restoreAllDefaults() {
+  const missing = getDeletedDefaults();
+  if (!missing.length) { showToast('All default tiles are present', ''); return; }
+  missing.forEach(d => state.config.tiles.push({ ...d }));
+  await saveConfig();
+  renderCanvas();
+  renderRestoreList();
+  showToast(`Restored ${missing.length} tile${missing.length > 1 ? 's' : ''}`, 'success');
+}
+
+function renderRestoreList() {
+  const wrap = document.getElementById('restore-missing-list');
+  if (!wrap) return;
+  const missing = getDeletedDefaults();
+  const restoreAllBtn = document.getElementById('btn-restore-all');
+
+  if (!missing.length) {
+    wrap.innerHTML = '<p class="restore-all-clear">✓ All default tiles are present</p>';
+    if (restoreAllBtn) restoreAllBtn.disabled = true;
+    return;
+  }
+
+  if (restoreAllBtn) restoreAllBtn.disabled = false;
+  wrap.innerHTML = '';
+  missing.forEach(d => {
+    const row = document.createElement('div');
+    row.className = 'restore-tile-row';
+    row.innerHTML = `
+      <span class="restore-tile-label">${d.label || d.id}</span>
+      <span class="restore-tile-type">${d.type}</span>
+      <button class="btn-restore-one" data-id="${d.id}">+ Restore</button>`;
+    row.querySelector('.btn-restore-one').addEventListener('click', () => restoreDefaultTile(d));
+    wrap.appendChild(row);
+  });
+}
+
 // ─── Add Tile Button ──────────────────────────────────────────────────────────
 document.getElementById('btn-add-tile').addEventListener('click', openAddModal);
 
-// ─── Settings Modal ─────────────────────────────────────────────────────────────
+// ─── Settings Modal ───────────────────────────────────────────────────────────────
+
+// Apply/remove compact-mode class (hides titlebar, expands app height)
+function applyWindowBehavior({ hideHeader, alwaysOnTop }) {
+  document.body.classList.toggle('compact-mode', !!hideHeader);
+  // Reflect always-on-top state on the toggle if it's rendered
+  const aotToggle = document.getElementById('toggle-always-on-top');
+  if (aotToggle) aotToggle.checked = !!alwaysOnTop;
+  const hhToggle = document.getElementById('toggle-hide-header');
+  if (hhToggle) hhToggle.checked = !!hideHeader;
+}
+
 function openSettingsModal() {
   const modal = document.getElementById('settings-modal');
   modal.classList.remove('hidden');
   renderDisplayList();
+  renderWindowBehavior();
 }
 
 function closeSettingsModal() {
   document.getElementById('settings-modal').classList.add('hidden');
+}
+
+function renderWindowBehavior() {
+  const wrap = document.getElementById('window-behavior-controls');
+  if (!wrap) return;
+
+  const hideHeader  = !!(state.settings.hideHeader);
+  const alwaysOnTop = !!(state.settings.alwaysOnTop);
+
+  wrap.innerHTML = `
+    <div class="behavior-row">
+      <div class="behavior-info">
+        <span class="behavior-label">Hide Titlebar</span>
+        <span class="behavior-desc">Removes the title bar, minimize, maximize &amp; close buttons for a fully clean display.</span>
+      </div>
+      <label class="toggle-switch" title="Toggle titlebar visibility">
+        <input type="checkbox" id="toggle-hide-header" ${hideHeader ? 'checked' : ''} />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+    </div>
+    <div class="behavior-row">
+      <div class="behavior-info">
+        <span class="behavior-label">Always on Top</span>
+        <span class="behavior-desc">Keeps CommandDeck above every other window on its monitor — including browsers and other apps — so shortcuts are always available. Other programs can still open on that screen but will appear behind CommandDeck.</span>
+      </div>
+      <label class="toggle-switch" title="Toggle always on top">
+        <input type="checkbox" id="toggle-always-on-top" ${alwaysOnTop ? 'checked' : ''} />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+    </div>`;
+
+  // Wire toggles
+  function syncBehavior() {
+    const hh  = document.getElementById('toggle-hide-header')?.checked  ?? hideHeader;
+    const aot = document.getElementById('toggle-always-on-top')?.checked ?? alwaysOnTop;
+    // Update renderer state
+    state.settings.hideHeader  = hh;
+    state.settings.alwaysOnTop = aot;
+    // Apply CSS locally (immediate feedback, main process will confirm via IPC)
+    applyWindowBehavior({ hideHeader: hh, alwaysOnTop: aot });
+    // Persist & apply in main process
+    window.commandDeck.setWindowBehavior({ hideHeader: hh, alwaysOnTop: aot });
+  }
+
+  document.getElementById('toggle-hide-header')?.addEventListener('change', syncBehavior);
+  document.getElementById('toggle-always-on-top')?.addEventListener('change', syncBehavior);
 }
 
 function renderDisplayList() {
@@ -651,9 +848,16 @@ function renderDisplayList() {
 
       const res = await window.commandDeck.setDisplay(d.index);
       if (res.success) {
-        applyTileSizing();
+        // Use dimensions returned by IPC (target display's physical resolution)
+        // because window.screen won't update synchronously after the move.
+        applyTileSizing(res.width || d.width, res.height || d.height);
+        // Also persist the selection in renderer state so re-opening settings shows correct active display
+        state.settings.preferredDisplay = d.index;
         showToast(`Moved to ${label}`, 'success');
       } else {
+        // Revert optimistic update on failure
+        state.activeDisplayIdx = state.settings.preferredDisplay ?? 0;
+        renderDisplayList();
         showToast(`Failed: ${res.error}`, 'error');
       }
     });
@@ -669,6 +873,9 @@ document.getElementById('settings-modal-backdrop').addEventListener('click', clo
 
 // Sidebar button
 document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
+
+// Restore defaults button
+document.getElementById('btn-restore-all')?.addEventListener('click', restoreAllDefaults);
 
 
 // ─── Titlebar controls ────────────────────────────────────────────────────────
@@ -734,6 +941,23 @@ async function init() {
 
   // Subscribe to stats
   window.commandDeck.onStats((stats) => applyStats(stats));
+
+  // Receive window behavior from main (on startup + after changes)
+  window.commandDeck.onApplyWindowBehavior((opts) => {
+    applyWindowBehavior(opts);
+    // Keep renderer state in sync
+    if (typeof opts.hideHeader  === 'boolean') state.settings.hideHeader  = opts.hideHeader;
+    if (typeof opts.alwaysOnTop === 'boolean') state.settings.alwaysOnTop = opts.alwaysOnTop;
+  });
+
+  // Initial restore list render (after config is loaded)
+  renderRestoreList();
+
+  // Apply saved window behavior from settings (backup in case IPC push fires before init)
+  applyWindowBehavior({
+    hideHeader:  !!state.settings.hideHeader,
+    alwaysOnTop: !!state.settings.alwaysOnTop,
+  });
 }
 
 init();
