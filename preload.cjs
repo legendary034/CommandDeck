@@ -5,6 +5,14 @@ contextBridge.exposeInMainWorld('commandDeck', {
   readConfig: () => ipcRenderer.invoke('read-config'),
   writeConfig: (config) => ipcRenderer.invoke('write-config', config),
 
+  // Settings I/O
+  readSettings: () => ipcRenderer.invoke('read-settings'),
+  writeSettings: (data) => ipcRenderer.invoke('write-settings', data),
+
+  // Display management
+  getDisplays: () => ipcRenderer.invoke('get-displays'),
+  setDisplay: (idx) => ipcRenderer.invoke('set-display', idx),
+
   // OS operations
   launchApp: (path, args) => ipcRenderer.invoke('launch-app', { path, args }),
   runCommand: (command) => ipcRenderer.invoke('run-command', command),

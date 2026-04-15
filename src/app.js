@@ -7,14 +7,17 @@ import { getIcon, ICONS } from './icons.js';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 const state = {
-  config:       null,
-  stats:        { cpuLoad: 0, cpuTemp: 0, cpuSpeed: 0, memUsed: 0, gpuTemp: null, cpuPower: null, memClock: null },
-  cpuHistory:   [],          // last N samples for sparkline
-  weather:      null,
-  activeCat:    'All',
-  searchQuery:  '',
-  editingTile:  null,
-  contextMenu:  null,
+  config:           null,
+  settings:         {},
+  stats:            { cpuLoad: 0, cpuTemp: 0, cpuSpeed: 0, memUsed: 0, gpuTemp: null, cpuPower: null, memClock: null },
+  cpuHistory:       [],          // last N samples for sparkline
+  weather:          null,
+  activeCat:        'All',
+  searchQuery:      '',
+  editingTile:      null,
+  contextMenu:      null,
+  displays:         [],
+  activeDisplayIdx: 0,
 };
 
 // ─── WMO weather code → label + icon ─────────────────────────────────────────
@@ -84,6 +87,32 @@ async function loadConfig() {
 async function saveConfig() {
   await window.commandDeck.writeConfig(state.config);
 }
+
+// ─── Dynamic Tile Sizing ───────────────────────────────────────────────────────────
+function applyTileSizing() {
+  const w = window.screen.width;
+  const h = window.screen.height;
+  const root = document.documentElement;
+
+  // Determine tile dimensions based on native screen resolution.
+  // Values chosen to keep ~5-6 columns comfortable at each breakpoint.
+  let minW, rowH;
+  if (w >= 3840) {           // 4K UHD
+    minW = 230; rowH = 225;
+  } else if (w >= 2560) {    // 1440p / QHD
+    minW = 195; rowH = 195;
+  } else if (w >= 1920) {    // 1080p FHD
+    minW = 155; rowH = 155;
+  } else if (w >= 1366) {    // 768p / HD+
+    minW = 135; rowH = 135;
+  } else {                    // below HD
+    minW = 115; rowH = 115;
+  }
+
+  root.style.setProperty('--tile-min-w', `${minW}px`);
+  root.style.setProperty('--tile-row-h', `${rowH}px`);
+}
+
 
 // ─── Clock ────────────────────────────────────────────────────────────────────
 function updateClock() {
@@ -565,6 +594,83 @@ document.getElementById('btn-modal-delete').addEventListener('click', async () =
 // ─── Add Tile Button ──────────────────────────────────────────────────────────
 document.getElementById('btn-add-tile').addEventListener('click', openAddModal);
 
+// ─── Settings Modal ─────────────────────────────────────────────────────────────
+function openSettingsModal() {
+  const modal = document.getElementById('settings-modal');
+  modal.classList.remove('hidden');
+  renderDisplayList();
+}
+
+function closeSettingsModal() {
+  document.getElementById('settings-modal').classList.add('hidden');
+}
+
+function renderDisplayList() {
+  const container = document.getElementById('display-list');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!state.displays.length) {
+    container.innerHTML = '<p style="color:var(--text-dim);font-size:12px;text-align:center;padding:16px">No display info available.</p>';
+    return;
+  }
+
+  state.displays.forEach((d) => {
+    const card = document.createElement('div');
+    card.className = 'display-card' + (d.index === state.activeDisplayIdx ? ' active' : '');
+    card.dataset.index = d.index;
+    card.id = `display-card-${d.index}`;
+
+    const badges = [
+      d.isPrimary ? '<span class="badge-primary">PRIMARY</span>' : '',
+      d.index === state.activeDisplayIdx ? '<span class="badge-active">ACTIVE</span>' : '',
+    ].filter(Boolean).join('');
+
+    const dpi = d.scaleFactor !== 1 ? ` @${d.scaleFactor}x` : '';
+    const label = d.label && d.label !== `Display ${d.index + 1}` ? d.label : `Display ${d.index + 1}`;
+
+    card.innerHTML = `
+      <div class="display-check">✓</div>
+      <div class="display-card-top">
+        <div class="display-icon"></div>
+        <div class="display-badges">${badges}</div>
+      </div>
+      <div class="display-index">${String(d.index + 1).padStart(2, '0')}</div>
+      <div class="display-name">${label}</div>
+      <div class="display-res">${d.width} × ${d.height}${dpi}</div>`;
+
+    card.addEventListener('click', async () => {
+      if (d.index === state.activeDisplayIdx) return;
+
+      // Optimistic UI update
+      state.activeDisplayIdx = d.index;
+      container.querySelectorAll('.display-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      // Re-render all badges
+      renderDisplayList();
+
+      const res = await window.commandDeck.setDisplay(d.index);
+      if (res.success) {
+        applyTileSizing();
+        showToast(`Moved to ${label}`, 'success');
+      } else {
+        showToast(`Failed: ${res.error}`, 'error');
+      }
+    });
+
+    container.appendChild(card);
+  });
+}
+
+// Close bindings
+document.getElementById('btn-settings-close').addEventListener('click', closeSettingsModal);
+document.getElementById('btn-settings-done').addEventListener('click',  closeSettingsModal);
+document.getElementById('settings-modal-backdrop').addEventListener('click', closeSettingsModal);
+
+// Sidebar button
+document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
+
+
 // ─── Titlebar controls ────────────────────────────────────────────────────────
 document.getElementById('btn-minimize').addEventListener('click', () => window.commandDeck.minimize());
 document.getElementById('btn-maximize').addEventListener('click', () => window.commandDeck.maximize());
@@ -584,7 +690,24 @@ function showToast(msg, type = '', duration = 2500) {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 async function init() {
-  await loadConfig();
+  // Apply tile sizing immediately based on current screen resolution
+  applyTileSizing();
+
+  // Load config and settings in parallel
+  const [cfg, settings] = await Promise.all([
+    window.commandDeck.readConfig(),
+    window.commandDeck.readSettings(),
+  ]);
+  state.config   = cfg;
+  state.settings = settings || {};
+
+  // Load display list
+  try {
+    state.displays         = await window.commandDeck.getDisplays();
+    state.activeDisplayIdx = typeof state.settings.preferredDisplay === 'number'
+      ? state.settings.preferredDisplay
+      : 0;
+  } catch { /* non-critical */ }
 
   if (!state.config) {
     document.getElementById('tile-canvas').innerHTML =

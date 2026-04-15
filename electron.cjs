@@ -1,12 +1,31 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, screen } = require('electron');
 const path    = require('path');
 const fs      = require('fs');
 const { exec, spawn } = require('child_process');
 
 // ── Paths ────────────────────────────────────────────────────────────────────
-const CONFIG_PATH = path.join(__dirname, 'config', 'tiles.json');
+const CONFIG_PATH    = path.join(__dirname, 'config', 'tiles.json');
+const SETTINGS_PATH  = path.join(__dirname, 'config', 'settings.json');
+
+// ── Settings helpers ──────────────────────────────────────────────────────────
+function readSettings() {
+  try {
+    return JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeSettingsSync(data) {
+  try {
+    const dir = path.dirname(SETTINGS_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const current = readSettings();
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify({ ...current, ...data }, null, 2), 'utf8');
+  } catch { /* ignore */ }
+}
 
 // ── Window ───────────────────────────────────────────────────────────────────
 let mainWindow;
@@ -32,7 +51,19 @@ function createWindow() {
   mainWindow.loadFile('index.html');
 
   mainWindow.once('ready-to-show', () => {
+    // Move to saved display before showing
+    const settings = readSettings();
+    const displays = screen.getAllDisplays();
+    const idx      = typeof settings.preferredDisplay === 'number' ? settings.preferredDisplay : 0;
+    const target   = displays[idx] || displays[0];
+
+    if (target) {
+      const { x, y, width, height } = target.bounds;
+      mainWindow.setBounds({ x, y, width, height });
+    }
+
     mainWindow.show();
+    mainWindow.setFullScreen(true);
   });
 
   mainWindow.on('closed', () => {
@@ -131,6 +162,48 @@ ipcMain.handle('read-config', () => {
     return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
   } catch {
     return null;
+  }
+});
+
+ipcMain.handle('read-settings', () => readSettings());
+
+ipcMain.handle('write-settings', (_e, data) => {
+  try {
+    writeSettingsSync(data);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('get-displays', () => {
+  const primary = screen.getPrimaryDisplay();
+  return screen.getAllDisplays().map((d, i) => ({
+    index:     i,
+    id:        d.id,
+    label:     d.label || `Display ${i + 1}`,
+    width:     d.size.width,
+    height:    d.size.height,
+    scaleFactor: d.scaleFactor,
+    isPrimary: d.id === primary.id,
+  }));
+});
+
+ipcMain.handle('set-display', (_e, idx) => {
+  try {
+    const displays = screen.getAllDisplays();
+    const target   = displays[idx];
+    if (!target || !mainWindow) return { success: false, error: 'Invalid display index' };
+
+    // Exit fullscreen first so setBounds works correctly
+    mainWindow.setFullScreen(false);
+    const { x, y, width, height } = target.bounds;
+    mainWindow.setBounds({ x, y, width, height });
+    mainWindow.setFullScreen(true);
+    writeSettingsSync({ preferredDisplay: idx });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
   }
 });
 
