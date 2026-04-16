@@ -466,6 +466,13 @@ async function handleTileClick(e, tile) {
       showToast(`Media: ${tile.action}`, 'success', 1200);
       break;
 
+    case 'shell':
+      if (tile.command) {
+        const res = await window.commandDeck.runCommand(tile.command);
+        if (!res.success) showToast(`Error: ${res.error}`, 'error');
+      }
+      break;
+
     case 'action':
       if (tile.command) {
         const res = await window.commandDeck.runCommand(tile.command);
@@ -547,8 +554,17 @@ function openEditModal(tile) {
 
   const isWeather = tile.type === 'weather';
 
-  const typeOpts = ['action','media','stat','clock','weather']
-    .map(t => `<option value="${t}" ${t === tile.type ? 'selected' : ''}>${t}</option>`)
+  const TYPE_LABELS = {
+    action:  'Application (EXE/Path)',
+    shell:   'Shell Command (PowerShell)',
+    media:   'Media Key',
+    stat:    'System Stat',
+    clock:   'Clock Widget',
+    weather: 'Weather Widget',
+  };
+
+  const typeOpts = ['action','shell','media','stat','clock','weather']
+    .map(t => `<option value="${t}" ${t === tile.type ? 'selected' : ''}>${TYPE_LABELS[t] || t}</option>`)
     .join('');
 
   const iconOpts = Object.keys(ICONS)
@@ -586,7 +602,7 @@ function openEditModal(tile) {
       </div>
     </div>
     <div class="form-group" id="ef-cmd-group" ${isWeather ? 'style="display:none"' : ''}>
-      <label class="form-label" id="ef-cmd-label">${tile.type === 'action' ? 'App Path / Script' : 'Command'}</label>
+      <label class="form-label" id="ef-cmd-label">${tile.type === 'shell' ? 'PowerShell Command' : (tile.type === 'action' ? 'App Path / Script' : 'Command')}</label>
       <input class="form-input" id="ef-command" value="${tile.command || tile.path || ''}" placeholder="e.g. C:\Windows\notepad.exe" />
     </div>
     <div class="form-group" id="ef-args-group" ${tile.type === 'action' ? '' : 'style="display:none"'}>
@@ -656,12 +672,16 @@ function openEditModal(tile) {
   // Type change handling (show/hide fields)
   body.querySelector('#ef-type').addEventListener('change', (e) => {
     const type = e.target.value;
-    const isAct = type === 'action';
-    body.querySelector('#ef-icon-group').style.display = (type === 'weather') ? 'none' : '';
-    body.querySelector('#ef-icon-url-group').style.display = (type === 'weather') ? 'none' : '';
-    body.querySelector('#ef-cmd-group').style.display = (type === 'weather') ? 'none' : '';
+    const isAct   = type === 'action';
+    const isShell = type === 'shell';
+    const isWeath = type === 'weather';
+
+    body.querySelector('#ef-icon-group').style.display = isWeath ? 'none' : '';
+    body.querySelector('#ef-icon-url-group').style.display = isWeath ? 'none' : '';
+    body.querySelector('#ef-cmd-group').style.display = isWeath ? 'none' : '';
     body.querySelector('#ef-args-group').style.display = isAct ? '' : 'none';
-    body.querySelector('#ef-cmd-label').textContent = isAct ? 'App Path / Script' : 'Command';
+    
+    body.querySelector('#ef-cmd-label').textContent = isShell ? 'PowerShell Command' : (isAct ? 'App Path / Script' : 'Command');
   });
 
   // Icon URL Preview & Find Logo
@@ -737,6 +757,10 @@ function openEditModal(tile) {
         tile.path = cmdRaw;
         tile.args = argsRaw ? argsRaw.split(' ') : [];
         delete tile.command;
+      } else if (newType === 'shell') {
+        tile.command = cmdRaw;
+        delete tile.path;
+        delete tile.args;
       } else {
         tile.command = cmdRaw;
         delete tile.path;
