@@ -246,6 +246,25 @@ body.compact-mode #app {
   line-height: 1;
 }
 
+.sidebar-add-cat {
+  border: 1px dashed rgba(68,136,255,.15) !important;
+  margin-top: 10px;
+  height: 40px !important;
+  opacity: 0.5;
+  border-radius: 8px !important;
+}
+
+.sidebar-add-cat:hover {
+  opacity: 1;
+  border-color: rgba(0,212,255,.4) !important;
+  background: rgba(0,212,255,.05) !important;
+  color: var(--accent-cyan) !important;
+}
+
+.sidebar-add-cat .sidebar-cat-icon {
+  font-size: 14px;
+}
+
 #sidebar-footer {
   display: flex;
   flex-direction: column;

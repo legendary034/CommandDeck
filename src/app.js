@@ -427,6 +427,9 @@ function renderSidebar() {
   const nav = document.getElementById('sidebar-nav');
   nav.innerHTML = '';
   const cats = state.config?.categories || ['All'];
+  
+  // Header / Branding (Optional if you want to keep the branding consistent)
+  
   cats.forEach((cat) => {
     const btn = document.createElement('button');
     btn.className = 'sidebar-cat' + (cat === state.activeCat ? ' active' : '');
@@ -435,14 +438,30 @@ function renderSidebar() {
     btn.innerHTML = `
       <span class="sidebar-cat-icon">${CATEGORY_ICONS[cat] || '●'}</span>
       <span class="sidebar-cat-label">${cat}</span>`;
+    
     btn.addEventListener('click', () => {
-      if (state.isRearranging) toggleRearrangeMode(false); // Disable rearrange when switching cats
+      if (state.isRearranging) toggleRearrangeMode(false);
       state.activeCat = cat;
       renderSidebar();
       renderCanvas();
     });
+
+    btn.addEventListener('contextmenu', (e) => showCategoryContextMenu(e, cat));
+    
     nav.appendChild(btn);
   });
+
+  // Add Page Button (+)
+  if (cats.length < 6) {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'sidebar-cat sidebar-add-cat';
+    addBtn.title = 'Add New Page';
+    addBtn.innerHTML = `
+      <span class="sidebar-cat-icon">+</span>
+      <span class="sidebar-cat-label">New Page</span>`;
+    addBtn.onclick = () => addCategory();
+    nav.appendChild(addBtn);
+  }
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────
@@ -539,6 +558,102 @@ function hideContextMenu() {
   const m = document.getElementById('context-menu');
   if (m) m.remove();
   state.contextMenu = null;
+}
+
+function showCategoryContextMenu(e, cat) {
+  if (cat === 'All') return;
+  e.preventDefault();
+  e.stopPropagation();
+  hideContextMenu();
+
+  const menu = document.createElement('div');
+  menu.id = 'context-menu';
+  menu.innerHTML = `
+    <div class="ctx-item" id="ctx-rename-cat">
+      <span>${getIcon('edit')}&nbsp; Rename Page</span>
+    </div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" id="ctx-delete-cat">
+      <span>${getIcon('trash')}&nbsp; Remove Page</span>
+    </div>`;
+
+  document.body.appendChild(menu);
+  
+  const { clientX: x, clientY: y } = e;
+  const mw = 170, mh = 80;
+  menu.style.left = `${Math.min(x, window.innerWidth  - mw - 8)}px`;
+  menu.style.top  = `${Math.min(y, window.innerHeight - mh - 8)}px`;
+
+  requestAnimationFrame(() => menu.classList.add('visible'));
+
+  menu.querySelector('#ctx-rename-cat').addEventListener('click', () => {
+    hideContextMenu(); 
+    renameCategory(cat);
+  });
+  menu.querySelector('#ctx-delete-cat').addEventListener('click', () => {
+    hideContextMenu(); 
+    removeCategory(cat);
+  });
+
+  state.contextMenu = menu;
+}
+
+// ─── Category Logic ──────────────────────────────────────────────────────────
+async function addCategory() {
+  const currentCats = state.config.categories || ['All'];
+  if (currentCats.length >= 6) {
+    showToast('Max 6 pages allowed', 'error');
+    return;
+  }
+  const name = window.prompt('Enter new page name:')?.trim();
+  if (!name || name === '') return;
+  if (currentCats.some(c => c.toLowerCase() === name.toLowerCase())) {
+    showToast('Page name already exists', 'error');
+    return;
+  }
+  state.config.categories.push(name);
+  await saveConfig();
+  renderSidebar();
+  showToast(`Page "${name}" added`, 'success');
+}
+
+async function removeCategory(cat) {
+  if (cat === 'All') return;
+  if (!window.confirm(`Delete page "${cat}"? Tiles will remain in "All" view.`)) return;
+  
+  state.config.categories = state.config.categories.filter(c => c !== cat);
+  if (state.activeCat === cat) state.activeCat = 'All';
+  
+  await saveConfig();
+  renderSidebar();
+  renderCanvas();
+  showToast(`Page "${cat}" removed`, 'success');
+}
+
+async function renameCategory(oldName) {
+  if (oldName === 'All') return;
+  const newName = window.prompt('Enter new name:', oldName)?.trim();
+  if (!newName || newName === oldName) return;
+  
+  const idx = state.config.categories.indexOf(oldName);
+  if (idx !== -1) {
+    if (state.config.categories.some(c => c.toLowerCase() === newName.toLowerCase())) {
+      showToast('Name already exists', 'error');
+      return;
+    }
+    state.config.categories[idx] = newName;
+    if (state.activeCat === oldName) state.activeCat = newName;
+    
+    // Update tile assignments
+    state.config.tiles.forEach(t => {
+      if (t.category === oldName) t.category = newName;
+    });
+    
+    await saveConfig();
+    renderSidebar();
+    renderCanvas();
+    showToast(`Page renamed to "${newName}"`, 'success');
+  }
 }
 
 document.addEventListener('click',     () => hideContextMenu());
@@ -643,6 +758,12 @@ function openEditModal(tile) {
         ${colorSwatches}
         <input type="color" class="form-color-custom" id="ef-color-custom" value="${tile.color || '#0a1a3a'}" />
       </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Page (Category)</label>
+      <select class="form-select" id="ef-category">
+        ${(state.config.categories || ['All']).map(c => `<option value="${esc(c)}" ${c === (tile.category || 'All') ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+      </select>
     </div>`;
 
   // Color swatch interaction
@@ -736,6 +857,7 @@ function openEditModal(tile) {
     tile.label = body.querySelector('#ef-label').value.trim();
     tile.type  = newType;
     tile.size  = body.querySelector('#ef-size').value;
+    tile.category = body.querySelector('#ef-category').value;
     tile.color = chosenColor;
 
     if (newType === 'weather') {
