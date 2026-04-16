@@ -14,33 +14,25 @@
 |---|---|
 | 🕐 **Live Clock** | Realtime digital clock with date display |
 | 🌤 **Weather Tile** | Current temp & conditions via [Open-Meteo](https://open-meteo.com/) (no API key required) |
-| 📊 **System Stats** | CPU load, CPU temp, CPU clock speed, GPU temp, RAM usage — polled every 2 seconds |
-| 🎵 **Media Controls** | Play/Pause, Next, Previous, Mute via Windows media keys (user32 P/Invoke) |
-| 🚀 **App Launcher** | Launch any `.exe` or run any shell command from a click |
-| 🎨 **Fully Editable** | Right-click any tile to edit label, icon, color, command, or size |
-| 🔍 **Search** | Filter tiles in real-time by name or type |
-| 💾 **Persistent Config** | All tile settings saved to `config/tiles.json` |
-| 📐 **Responsive Grid** | Fluid 5-column grid that reflows from compact to wide-screen |
+| 📊 **System Stats** | CPU load (with sparklines), temp, speed, GPU data, and RAM usage |
+| 🎵 **Media Controls** | Play/Pause, Next/Prev, Mute, Volume via `user32` P/Invoke |
+| 🚀 **Shell Commands** | Dedicated PowerShell script support with proper character escaping |
+| 🛠 **Utility Tools** | Quick header access for Touchscreen realignment helper |
+| 📜 **Diagnostic Logs** | Centralized dashboard-mounted system log viewer |
+| 🎨 **Fully Editable** | Right-click any tile to edit label, icon, color, or behavior |
+| 📐 **Responsive Grid** | Fluid neon layout optimized for small 7-inch auxiliary displays |
 
 ---
 
-## 🖥 Screenshot
+## 🖥 Screenshots
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ ⬡ COMMANDDECK                            [─] [□] [✕]       │
-├──────┬──────────────────────────────────────────────────────┤
-│  ⁙   │  [ Search tiles...                    ]   USER       │
-│  ⌥   ├──────────────────────────────────────────────────────┤
-│  ♫   │                                                      │
-│  ⬡   │  [ 15:26          ] [🔇] [ Los Angeles  64°F  ]     │
-│  ◈   │  [ Wed Apr 15 2026 ]     [ CLEAR              ]     │
-│      │                                                      │
-│  +   │  [ ⏮ ] [ ▶ ] [ ⏭ ] [ CPU CLOCK ] [ CPU USAGE ]   │
-│  ⚙   │                        [ 3800 MHZ ] [   61 %  ]   │
-│      │                                                      │
-└──────┴──────────────────────────────────────────────────────┘
-```
+![Dashboard Overview](docs/img/dashboard_v2.png)
+
+*The v1.1 Dashboard featuring neon-cyan headers, live system stats, and the new Touch Fix utility button.*
+
+![Edit Modal Shell](docs/img/edit_modal_shell.png)
+
+*Dedicated Shell Command support with proper PowerShell cmdlet handling and character escaping.*
 
 ---
 
@@ -104,12 +96,18 @@ Sends a Windows media key via `user32.dll`. Available actions:
 | `mute` | Toggle mute |
 | `vol-up` / `vol-down` | Volume control |
 
-### 🚀 Action
-Launches an application or runs a shell command.
+### 🚀 Action (App Launcher)
+Used for standard application launching by path.
 
-- Set `path` to an `.exe` path for direct launch (e.g. `C:\Program Files\...`)  
-- Set `command` for any PowerShell / CMD command  
-- Clicking a tile with no path/command configured opens the editor automatically
+- Set `path` to an `.exe`, `.bat`, or shortcut (e.g. `C:\Windows\notepad.exe`)  
+- Supports "Magic Paste": Paste a shortcut with arguments into the path field, and I'll split them for you automatically!
+
+### 💻 Shell (PowerShell)
+Dedicated tile type for complex PowerShell cmdlets and scripts.
+
+- Set `command` to your raw script (e.g. `Start-Process wt -ArgumentList "-p PowerShell" -Verb RunAs`)  
+- Handles quotes and special characters reliably via internal escaping.  
+- Bypasses the auto-splitting logic to ensure your cmdlet remains intact.
 
 ---
 
@@ -133,18 +131,18 @@ All tile configuration is stored in `config/tiles.json`. You can edit it directl
 
 | Field | Values | Description |
 |---|---|---|
-| `type` | `action` `media` `stat` `clock` `weather` | Tile behaviour |
+| `type` | `action` `shell` `media` `stat` `clock` `weather` | Tile behavior |
 | `size` | `small` `wide` `tall` `large` | Grid span |
 | `color` | Any hex color | Background color |
 | `icon` | See icon list below | SVG icon name |
-| `path` | File path string | App to launch |
-| `command` | PowerShell/CMD string | Shell command to run |
+| `path` | File path string | App to launch (`action` type only) |
+| `command` | PowerShell/CMD string | Script to run (`shell` type only) |
 | `stat` | See stat keys above | Live metric to display |
 | `action` | See media actions above | Media key to send |
 
 ### Available Icons
 
-`volume-x` · `volume-2` · `skip-back` · `skip-forward` · `play` · `pause` · `gamepad` · `music` · `flame` · `radio` · `layers` · `folder-open` · `settings` · `terminal` · `cpu` · `moon` · `sun` · `cloud` · `cloud-rain` · `cloud-snow` · `zap` · `edit` · `trash` · `search` · `menu` · `plus` · `x` · `check`
+`volume-x` · `volume-2` · `skip-back` · `skip-forward` · `play` · `pause` · `gamepad` · `music` · `flame` · `radio` · `layers` · `folder-open` · `settings` · `terminal` · `cpu` · `moon` · `sun` · `cloud` · `cloud-rain` · `cloud-snow` · `zap` · `edit` · `trash` · `search` · `menu` · `plus` · `x` · `check` · `alert-triangle` · `minimize` · `maximize`
 
 ---
 
