@@ -22,6 +22,9 @@ const state = {
   sortableInst:     null,        // SortableJS instance
 };
 
+// ─── Utils ────────────────────────────────────────────────────────────────────
+const esc = (s) => (s ? String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;') : '');
+
 // ─── WMO weather code → label + icon ─────────────────────────────────────────
 function weatherCodeInfo(code) {
   if (code === 0)              return { label: 'CLEAR',      icon: 'sun'        };
@@ -581,7 +584,7 @@ function openEditModal(tile) {
   body.innerHTML = `
     <div class="form-group">
       <label class="form-label">Label</label>
-      <input class="form-input" id="ef-label" value="${tile.label || ''}" placeholder="Tile label" />
+      <input class="form-input" id="ef-label" value="${esc(tile.label)}" placeholder="Tile label" />
     </div>
     <div class="form-group">
       <label class="form-label">Type</label>
@@ -597,23 +600,23 @@ function openEditModal(tile) {
         <button id="btn-find-logo" class="btn-text-action">Find Logo ⬈</button>
       </div>
       <div class="url-input-row">
-        <input class="form-input" id="ef-icon-url" value="${tile.iconUrl || ''}" placeholder="Paste PNG/SVG URL here" />
-        <div id="ef-icon-preview" class="icon-input-preview">${tile.iconUrl ? `<img src="${tile.iconUrl}" />` : ''}</div>
+        <input class="form-input" id="ef-icon-url" value="${esc(tile.iconUrl)}" placeholder="Paste PNG/SVG URL here" />
+        <div id="ef-icon-preview" class="icon-input-preview">${tile.iconUrl ? `<img src="${esc(tile.iconUrl)}" />` : ''}</div>
       </div>
     </div>
     <div class="form-group" id="ef-cmd-group" ${isWeather ? 'style="display:none"' : ''}>
       <label class="form-label" id="ef-cmd-label">${tile.type === 'shell' ? 'PowerShell Command' : (tile.type === 'action' ? 'App Path / Script' : 'Command')}</label>
-      <input class="form-input" id="ef-command" value="${tile.command || tile.path || ''}" placeholder="e.g. C:\Windows\notepad.exe" />
+      <input class="form-input" id="ef-command" value="${esc(tile.command || tile.path)}" placeholder="e.g. C:\Windows\notepad.exe" />
     </div>
     <div class="form-group" id="ef-args-group" ${tile.type === 'action' ? '' : 'style="display:none"'}>
       <label class="form-label">Arguments</label>
-      <input class="form-input" id="ef-args" value="${(tile.args || []).join(' ')}" placeholder="e.g. --profile-directory=Default --app-id=..." />
+      <input class="form-input" id="ef-args" value="${esc((tile.args || []).join(' '))}" placeholder="e.g. --profile-directory=Default --app-id=..." />
       <p class="form-hint">Tip: If you paste a shortcut with arguments into the Path field, I'll split them for you automatically.</p>
     </div>
     ${isWeather ? `
     <div class="form-group" id="ef-weather-group">
       <label class="form-label">City / Location</label>
-      <input class="form-input" id="ef-weather-city" value="${currentCity}" placeholder="e.g. Chicago, New York, London" />
+      <input class="form-input" id="ef-weather-city" value="${esc(currentCity)}" placeholder="e.g. Chicago, New York, London" />
       <p class="form-hint">Changing the city will re-fetch weather on save.</p>
     </div>
     <div class="form-group">
