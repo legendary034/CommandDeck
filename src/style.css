@@ -1724,15 +1724,9 @@ body.compact-mode #app {
 }
 
 /* ─────────────────────────────────────────────────────────
-   APP LOGS VIEWER
+   LOGS VIEWER COMPONENT
+   Shared by both settings (defunct) and quick logs modal.
 ───────────────────────────────────────────────────────── */
-#settings-logs-container {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 12px;
-}
-
 .logs-viewer {
   background: rgba(0,0,0,.45);
   border: 1px solid rgba(255,255,255,.12);
@@ -1756,18 +1750,6 @@ body.compact-mode #app {
   border-radius: 10px;
 }
 .logs-viewer::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.2); }
-
-.logs-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.logs-actions .btn-secondary,
-.logs-actions .btn-danger {
-  padding: 6px 14px;
-  font-size: 11px;
-}
 
 /* ─────────────────────────────────────────────────────────
    QUICK LOGS MODAL

@@ -982,7 +982,6 @@ function openSettingsModal() {
   modal.classList.remove('hidden');
   renderDisplayList();
   renderWindowBehavior();
-  renderSettingsLogs();
 }
 
 function closeSettingsModal() {
@@ -990,49 +989,6 @@ function closeSettingsModal() {
 }
 
 // ─── App Logs ──────────────────────────────────────────────────────────────
-async function renderSettingsLogs() {
-  const viewer = document.getElementById('settings-logs-viewer');
-  if (!viewer) return;
-
-  viewer.textContent = 'Fetching logs…';
-  const logs = await window.commandDeck.readLogs();
-  viewer.textContent = logs || 'No log data available.';
-  // Auto-scroll to bottom
-  viewer.scrollTop = viewer.scrollHeight;
-}
-
-function setupLogsListeners() {
-  document.getElementById('btn-logs-refresh')?.addEventListener('click', () => {
-    renderSettingsLogs();
-    showToast('Logs refreshed', 'success', 800);
-  });
-
-  document.getElementById('btn-logs-copy')?.addEventListener('click', async () => {
-    const viewer = document.getElementById('settings-logs-viewer');
-    if (!viewer) return;
-    try {
-      await navigator.clipboard.writeText(viewer.textContent);
-      showToast('Logs copied to clipboard', 'success', 1500);
-    } catch {
-      showToast('Failed to copy logs', 'error');
-    }
-  });
-
-  document.getElementById('btn-logs-folder')?.addEventListener('click', async () => {
-    await window.commandDeck.openLogFolder();
-  });
-
-  document.getElementById('btn-logs-clear')?.addEventListener('click', async () => {
-    if (!confirm('Are you sure you want to clear the log file? This cannot be undone.')) return;
-    const res = await window.commandDeck.clearLogs();
-    if (res.success) {
-      renderSettingsLogs();
-      showToast('Logs cleared', 'success', 1500);
-    } else {
-      showToast('Error clearing logs: ' + res.error, 'error');
-    }
-  });
-}
 
 function renderWindowBehavior() {
   const wrap = document.getElementById('window-behavior-controls');
@@ -1256,7 +1212,6 @@ async function init() {
     alwaysOnTop: !!state.settings.alwaysOnTop,
   });
 
-  setupLogsListeners();
   setupLogsModalListeners();
 }
 
