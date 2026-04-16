@@ -34,6 +34,10 @@
 
 *Dedicated Shell Command support with proper PowerShell cmdlet handling and character escaping.*
 
+![Settings Modal](docs/img/settings.png)
+
+*The new Settings dashboard allowing monitor selection and persistent configuration management.*
+
 ---
 
 ## 🚀 Getting Started
