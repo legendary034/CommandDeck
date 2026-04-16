@@ -605,20 +605,30 @@ async function addCategory() {
     showToast('Max 6 pages allowed', 'error');
     return;
   }
-  const name = window.prompt('Enter new page name:')?.trim();
-  if (!name || name === '') return;
-  if (currentCats.some(c => c.toLowerCase() === name.toLowerCase())) {
-    showToast('Page name already exists', 'error');
-    return;
-  }
-  state.config.categories.push(name);
-  await saveConfig();
-  renderSidebar();
-  showToast(`Page "${name}" added`, 'success');
+  
+  openPromptModal('New Page Name', '', async (name) => {
+    const trimmed = name?.trim();
+    if (!trimmed) return;
+    
+    // Ensure array exists
+    if (!state.config.categories) state.config.categories = ['All'];
+    
+    if (state.config.categories.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+      showToast('Page name already exists', 'error');
+      return;
+    }
+    
+    state.config.categories.push(trimmed);
+    await saveConfig();
+    renderSidebar();
+    showToast(`Page "${trimmed}" added`, 'success');
+  });
 }
 
 async function removeCategory(cat) {
   if (cat === 'All') return;
+  
+  // Use a custom modal instead of window.confirm for better Electron support
   if (!window.confirm(`Delete page "${cat}"? Tiles will remain in "All" view.`)) return;
   
   state.config.categories = state.config.categories.filter(c => c !== cat);
@@ -632,32 +642,84 @@ async function removeCategory(cat) {
 
 async function renameCategory(oldName) {
   if (oldName === 'All') return;
-  const newName = window.prompt('Enter new name:', oldName)?.trim();
-  if (!newName || newName === oldName) return;
   
-  const idx = state.config.categories.indexOf(oldName);
-  if (idx !== -1) {
-    if (state.config.categories.some(c => c.toLowerCase() === newName.toLowerCase())) {
-      showToast('Name already exists', 'error');
-      return;
+  openPromptModal('Rename Page', oldName, async (newName) => {
+    const trimmed = newName?.trim();
+    if (!trimmed || trimmed === oldName) return;
+    
+    const idx = state.config.categories.indexOf(oldName);
+    if (idx !== -1) {
+      if (state.config.categories.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+        showToast('Name already exists', 'error');
+        return;
+      }
+      state.config.categories[idx] = trimmed;
+      if (state.activeCat === oldName) state.activeCat = trimmed;
+      
+      // Update tile assignments
+      state.config.tiles.forEach(t => {
+        if (t.category === oldName) t.category = trimmed;
+      });
+      
+      await saveConfig();
+      renderSidebar();
+      renderCanvas();
+      showToast(`Page renamed to "${trimmed}"`, 'success');
     }
-    state.config.categories[idx] = newName;
-    if (state.activeCat === oldName) state.activeCat = newName;
-    
-    // Update tile assignments
-    state.config.tiles.forEach(t => {
-      if (t.category === oldName) t.category = newName;
-    });
-    
-    await saveConfig();
-    renderSidebar();
-    renderCanvas();
-    showToast(`Page renamed to "${newName}"`, 'success');
-  }
+  });
+}
+
+// ─── Prompt Modal Logic ──────────────────────────────────────────────────────
+function openPromptModal(title, defaultValue, onSave) {
+  const modal = document.getElementById('prompt-modal');
+  const input = document.getElementById('prompt-input');
+  const titleEl = document.getElementById('prompt-modal-title');
+  const btnSave = document.getElementById('btn-prompt-save');
+  const btnCancel = document.getElementById('btn-prompt-cancel');
+  const btnClose  = document.getElementById('btn-prompt-modal-close');
+
+  titleEl.textContent = title;
+  input.value = defaultValue || '';
+  modal.classList.remove('hidden');
+  input.focus();
+
+  const close = () => {
+    modal.classList.add('hidden');
+    // Cleanup listeners to prevent memory leaks/multiple triggers
+    btnSave.onclick = null;
+    btnCancel.onclick = null;
+    btnClose.onclick = null;
+  };
+
+  btnSave.onclick = () => {
+    const val = input.value.trim();
+    if (val) {
+      onSave(val);
+      close();
+    }
+  };
+
+  btnCancel.onclick = close;
+  btnClose.onclick  = close;
+
+  // Handle Enter key
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      btnSave.click();
+    } else if (e.key === 'Escape') {
+      close();
+    }
+  };
 }
 
 document.addEventListener('click',     () => hideContextMenu());
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideContextMenu(); });
+document.addEventListener('keydown', (e) => { 
+  if (e.key === 'Escape') {
+    hideContextMenu();
+    document.getElementById('edit-modal').classList.add('hidden');
+    document.getElementById('prompt-modal').classList.add('hidden');
+  }
+});
 
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
 const PRESET_COLORS = [

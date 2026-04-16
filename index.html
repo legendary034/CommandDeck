@@ -201,5 +201,23 @@
   <!-- ── Renderer ────────────────────────────────────── -->
   <script src="src/lib/Sortable.min.js"></script>
   <script type="module" src="src/app.js"></script>
+  <!-- ── Prompt Modal ───────────────────────────────────── -->
+  <div id="prompt-modal" class="hidden" role="dialog" aria-modal="true">
+    <div id="prompt-modal-backdrop"></div>
+    <div id="prompt-modal-panel">
+      <div id="prompt-modal-header">
+        <h2 id="prompt-modal-title">Page Name</h2>
+        <button id="btn-prompt-modal-close" aria-label="Close">✕</button>
+      </div>
+      <div id="prompt-modal-body">
+        <input type="text" id="prompt-input" class="form-input" placeholder="Enter name..." autofocus />
+        <div class="prompt-modal-actions">
+          <button id="btn-prompt-cancel" class="btn-secondary">Cancel</button>
+          <button id="btn-prompt-save" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

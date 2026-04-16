@@ -1981,6 +1981,78 @@ body.compact-mode #app {
   gap: 12px;
 }
 
+/* ─── PROMPT MODAL ────────────────────────────────────── */
+#prompt-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#prompt-modal.hidden { display: none; }
+
+#prompt-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 5, 15, 0.85);
+  backdrop-filter: blur(8px);
+}
+
+#prompt-modal-panel {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  background: var(--bg-surface);
+  border: 1px solid rgba(0, 212, 255, 0.25);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 20px rgba(0,212,255,0.05);
+  overflow: hidden;
+  animation: modal-slide-up 0.3s cubic-bezier(0, 0, 0.2, 1);
+}
+
+#prompt-modal-header {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 212, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+#prompt-modal-title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 14px;
+  color: var(--accent-cyan);
+  text-shadow: var(--glow-cyan);
+  margin: 0;
+}
+
+#btn-prompt-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 16px;
+  transition: var(--transition-fast);
+}
+#btn-prompt-modal-close:hover { color: var(--text-primary); }
+
+#prompt-modal-body {
+  padding: 20px;
+}
+
+.prompt-modal-actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 12px;
+}
+
+.prompt-modal-actions button {
+  flex: 1;
+}
+
 .touch-command-box {
   background: rgba(0,0,0,0.4);
   border: 1px solid rgba(255,255,255,0.08);
