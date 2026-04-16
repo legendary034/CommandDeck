@@ -83,6 +83,8 @@
           </div>
         </div>
 
+        <button id="btn-touch-fix" title="Touchscreen Fix Utility" aria-label="Touchscreen Fix Utility">?</button>
+
         <div id="header-right">
           <span id="header-profile">USER</span>
         </div>
@@ -174,6 +176,24 @@
       </div>
       <div id="settings-modal-footer">
         <button id="btn-settings-done" class="btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Touch Fix Modal ────────────────────────────────── -->
+  <div id="touch-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="touch-modal-title">
+    <div id="touch-modal-backdrop"></div>
+    <div id="touch-modal-panel">
+      <div id="touch-modal-header">
+        <h2 id="touch-modal-title">⬢ Touch Utility</h2>
+        <button id="btn-touch-modal-close" aria-label="Close utility">✕</button>
+      </div>
+      <div id="touch-modal-body">
+        <p class="touch-hint">Rerun this command if your touchscreen loses alignment or stops responding:</p>
+        <div class="touch-copy-wrap">
+          <div class="touch-command-box font-mono">C:\Windows\System32\multidigimon.exe -touch</div>
+          <button id="btn-touch-copy" class="btn-primary">Copy</button>
+        </div>
       </div>
     </div>
   </div>

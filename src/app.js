@@ -1237,6 +1237,7 @@ async function init() {
   });
 
   setupLogsModalListeners();
+  setupTouchListeners();
 }
 
 // ─── Quick Logs Modal ──────────────────────────────────────────────────────
@@ -1265,6 +1266,41 @@ function setupLogsModalListeners() {
   document.getElementById('btn-logs-modal-folder')?.addEventListener('click', () => window.commandDeck.openLogFolder());
   document.getElementById('btn-logs-modal-close')?.addEventListener('click', () => closeLogsModal());
   document.getElementById('logs-modal-backdrop')?.addEventListener('click', () => closeLogsModal());
+}
+
+
+// ─── Touch Fix Utility ──────────────────────────────────────────────────────
+function openTouchModal() {
+  document.getElementById('touch-modal')?.classList.remove('hidden');
+}
+
+function closeTouchModal() {
+  document.getElementById('touch-modal')?.classList.add('hidden');
+}
+
+function setupTouchListeners() {
+  document.getElementById('btn-touch-fix')?.addEventListener('click', openTouchModal);
+  document.getElementById('btn-touch-modal-close')?.addEventListener('click', closeTouchModal);
+  document.getElementById('touch-modal-backdrop')?.addEventListener('click', closeTouchModal);
+
+  document.getElementById('btn-touch-copy')?.addEventListener('click', async () => {
+    const cmd = "C:\\Windows\\System32\\multidigimon.exe -touch";
+    try {
+      await navigator.clipboard.writeText(cmd);
+      showToast('Command copied to clipboard', 'success', 1500);
+      setTimeout(closeTouchModal, 400); // Small delay for visual feedback
+    } catch (err) {
+      showToast('Failed to copy command', 'error');
+      console.error('Copy error:', err);
+    }
+  });
+
+  // Also close on Escape key
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.getElementById('touch-modal')?.classList.contains('hidden')) {
+      closeTouchModal();
+    }
+  });
 }
 
 init();
