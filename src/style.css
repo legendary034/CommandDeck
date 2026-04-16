@@ -291,17 +291,98 @@ body.compact-mode #app {
   border-bottom: 1px solid rgba(68,136,255,.1);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 16px;
   gap: 12px;
   flex-shrink: 0;
+  z-index: 100;
+  -webkit-app-region: drag;
 }
 
 #header-search-wrap {
   flex: 1;
-  max-width: 360px;
+  max-width: 320px;
   position: relative;
   display: flex;
   align-items: center;
+}
+
+/* ── Center piece: System Bar ──────────────────────── */
+#header-system-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 25px;
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: .05em;
+  pointer-events: none;
+  flex: 1;
+}
+
+.header-stat-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#h-clock-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  min-width: 90px;
+}
+
+#h-time {
+  color: var(--text-primary);
+  font-weight: 700;
+  font-size: 12px;
+  text-shadow: 0 0 8px rgba(255,255,255,.1);
+  line-height: 1;
+}
+
+#h-date {
+  font-size: 9px;
+  opacity: .5;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.header-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255,255,255,.08);
+}
+
+.h-stat-label {
+  font-size: 9px;
+  color: rgba(255,255,255,.3);
+  font-weight: 700;
+}
+
+.h-stat-val {
+  min-width: 35px;
+  text-align: right;
+  color: var(--accent-cyan);
+  font-weight: 700;
+}
+
+.h-mini-bar-wrap {
+  width: 40px;
+  height: 4px;
+  background: rgba(255,255,255,.05);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.h-mini-bar {
+  height: 100%;
+  width: 0;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 6px var(--accent-cyan);
+  transition: width .5s ease;
 }
 
 #search-icon {
@@ -1468,4 +1549,331 @@ body.compact-mode #app {
 
 .toggle-switch:hover .toggle-track {
   border-color: rgba(68,136,255,.5);
+}
+
+/* ─────────────────────────────────────────────────────────
+   REARRANGE MODE
+───────────────────────────────────────────────────────── */
+#btn-rearrange.active {
+  background: rgba(0, 212, 255, 0.15);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  box-shadow: var(--neon-glow-cyan);
+}
+
+#btn-rearrange.active .sidebar-action-icon {
+  transform: scale(1.1);
+}
+
+/* Canvas state */
+#tile-canvas.rearranging {
+  /* Subtle indicator that we're in a special mode */
+  overflow-y: auto !important;
+  touch-action: pan-y;
+}
+
+#tile-canvas.rearranging #tile-add-btn {
+  display: none; /* Hide add button while rearranging to clean up the grid */
+}
+
+/* Tile state while rearranging */
+.tile.rearrange-active {
+  cursor: grab;
+  user-select: none;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.tile.rearrange-active:hover {
+  border-color: var(--accent-cyan);
+  transform: scale(1.02);
+  z-index: 10;
+}
+
+.tile.rearrange-active:active {
+  cursor: grabbing;
+}
+
+/* Wobble animation for rearrange mode */
+@keyframes tile-wobble {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(-0.5deg); }
+  75% { transform: rotate(0.5deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.tile.rearrange-active {
+  animation: tile-wobble 0.3s ease-in-out infinite alternate;
+}
+
+/* SortableJS Classes */
+.sortable-ghost {
+  opacity: 0.3;
+  background: var(--accent-cyan) !important;
+  border: 2px dashed var(--accent-cyan) !important;
+}
+
+.sortable-chosen {
+  background: rgba(0, 212, 255, 0.1) !important;
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.3) !important;
+}
+
+.sortable-drag {
+  opacity: 0.9;
+  cursor: grabbing;
+}
+
+/* ─────────────────────────────────────────────────────────
+   CUSTOM TILE ICONS
+───────────────────────────────────────────────────────── */
+
+/* Tile Renderers */
+.tile-icon-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.tile-custom-image {
+  max-width: 55%;
+  max-height: 55%;
+  object-fit: contain;
+  /* Neon drop shadow to make logos pop */
+  filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.45));
+  transition: transform var(--transition-normal);
+}
+
+.tile:hover .tile-custom-image {
+  transform: scale(1.15) translateY(-2px);
+  filter: drop-shadow(0 0 12px rgba(0, 212, 255, 0.65));
+}
+
+.tile-clock-custom-icon {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+}
+
+.tile-clock-custom-icon .tile-custom-image {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Editor Modal Controls */
+.label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.btn-text-action {
+  background: none;
+  border: none;
+  color: var(--accent-cyan);
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  cursor: pointer;
+  padding: 0;
+  transition: var(--transition-fast);
+  opacity: 0.8;
+}
+
+.btn-text-action:hover {
+  opacity: 1;
+  text-decoration: underline;
+  text-shadow: 0 0 8px rgba(0, 212, 255, 0.4);
+}
+
+.url-input-row {
+  display: flex;
+  gap: 12px;
+}
+
+.icon-input-preview {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  background: var(--bg-overlay);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: inset 0 0 10px rgba(0,0,0,.2);
+}
+
+.icon-input-preview img {
+  max-width: 80%;
+  max-height: 80%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 5px rgba(255,255,255,.2));
+}
+
+/* ─────────────────────────────────────────────────────────
+   APP LOGS VIEWER
+───────────────────────────────────────────────────────── */
+#settings-logs-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.logs-viewer {
+  background: rgba(0,0,0,.45);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 8px;
+  padding: 12px;
+  height: 240px;
+  overflow-y: scroll;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  box-shadow: inset 0 0 20px rgba(0,0,0,.3);
+}
+
+/* Custom scrollbar for logs */
+.logs-viewer::-webkit-scrollbar { width: 6px; }
+.logs-viewer::-webkit-scrollbar-track { background: transparent; }
+.logs-viewer::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.1);
+  border-radius: 10px;
+}
+.logs-viewer::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.2); }
+
+.logs-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.logs-actions .btn-secondary,
+.logs-actions .btn-danger {
+  padding: 6px 14px;
+  font-size: 11px;
+}
+
+/* ─────────────────────────────────────────────────────────
+   QUICK LOGS MODAL
+───────────────────────────────────────────────────────── */
+#logs-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+}
+
+#logs-modal.hidden { display: none; }
+
+#logs-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.75);
+  backdrop-filter: blur(4px);
+}
+
+#logs-modal-panel {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
+  background: var(--bg-surface);
+  border: 1px solid rgba(0,212,255,.3);
+  box-shadow: 0 20px 50px rgba(0,0,0,.6), 0 0 20px rgba(0,212,255,.1);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modal-enter .25s ease-out;
+}
+
+#logs-modal-header {
+  padding: 16px 20px;
+  background: rgba(0,212,255,.05);
+  border-bottom: 1px solid rgba(0,212,255,.15);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#logs-modal-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 13px;
+  letter-spacing: .15em;
+  color: var(--accent-cyan);
+  text-transform: uppercase;
+}
+
+.logs-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#btn-logs-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+#btn-logs-modal-close:hover { color: var(--text-primary); }
+
+#logs-modal-body {
+  padding: 20px;
+}
+
+#quick-logs-viewer {
+  height: 400px; /* larger than the settings one */
+  border-color: rgba(0,212,255,.1);
+}
+
+/* ── Logs Tile Styling ────────────────────────────── */
+.tile-logs {
+  background: linear-gradient(135deg, #0d122b 0%, #080a1a 100%) !important;
+  border-color: rgba(0,212,255,.15) !important;
+}
+
+.tile-logs .tile-icon .icon {
+  stroke: var(--accent-cyan) !important;
+  filter: drop-shadow(0 0 8px rgba(0,212,255,.4)) !important;
+}
+
+/* Diagnostic Pulsate for logs tile */
+.tile-logs .tile-icon::after {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: var(--accent-cyan);
+  border-radius: 50%;
+  top: 15px;
+  right: 15px;
+  box-shadow: 0 0 10px var(--accent-cyan);
+  animation: diagnostic-pulse 2s infinite;
+}
+
+@keyframes diagnostic-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.3; }
+  100% { transform: scale(1); opacity: 1; }
 }

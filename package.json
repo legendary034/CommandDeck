@@ -8,6 +8,7 @@
     "build": "electron-builder --win"
   },
   "dependencies": {
+    "sortablejs": "^1.15.7",
     "systeminformation": "^5.22.7"
   },
   "devDependencies": {
@@ -26,7 +27,10 @@
       "!dist"
     ],
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "assets/icon.ico"
     },
     "nsis": {

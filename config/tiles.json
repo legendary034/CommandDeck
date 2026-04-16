@@ -73,13 +73,14 @@
       "unit": "%"
     },
     {
-      "id": "gamepad",
+      "id": "gemini",
       "type": "action",
       "size": "small",
       "color": "#1539a8",
-      "label": "GAMING",
-      "icon": "gamepad",
-      "command": ""
+      "label": "GEMINI",
+      "icon": "zap",
+      "path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome_proxy.exe",
+      "args": ["--profile-directory=Default", "--app-id=gdfaincndogidkdcdkhapmbffkckdkhn"]
     },
     {
       "id": "music-app",
@@ -88,7 +89,8 @@
       "color": "#1539a8",
       "label": "MUSIC",
       "icon": "music",
-      "command": ""
+      "path": "",
+      "args": []
     },
     {
       "id": "flame",
@@ -97,7 +99,8 @@
       "color": "#1539a8",
       "label": "HOTSPOT",
       "icon": "flame",
-      "command": ""
+      "path": "",
+      "args": []
     },
     {
       "id": "cpu-temp",
@@ -124,7 +127,8 @@
       "color": "#4c1d95",
       "label": "LIVE STREAMS",
       "icon": "radio",
-      "command": ""
+      "path": "",
+      "args": []
     },
     {
       "id": "layers",
@@ -133,7 +137,8 @@
       "color": "#5b21b6",
       "label": "",
       "icon": "layers",
-      "command": ""
+      "path": "",
+      "args": []
     },
     {
       "id": "work-macros",
@@ -142,7 +147,8 @@
       "color": "#9d174d",
       "label": "WORK MACROS",
       "icon": "folder-open",
-      "command": ""
+      "path": "",
+      "args": []
     },
     {
       "id": "cpu-power",

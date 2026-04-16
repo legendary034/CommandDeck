@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, shell } = require('electron');
 
 contextBridge.exposeInMainWorld('commandDeck', {
   // Config I/O
@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('commandDeck', {
   // Display management
   getDisplays: () => ipcRenderer.invoke('get-displays'),
   setDisplay: (idx) => ipcRenderer.invoke('set-display', idx),
+  getUserInfo: () => ipcRenderer.invoke('get-user-info'),
 
   // Window behavior (always-on-top + hide header)
   setWindowBehavior: (opts) => ipcRenderer.invoke('set-window-behavior', opts),
@@ -19,7 +20,11 @@ contextBridge.exposeInMainWorld('commandDeck', {
   // OS operations
   launchApp: (path, args) => ipcRenderer.invoke('launch-app', { path, args }),
   runCommand: (command) => ipcRenderer.invoke('run-command', command),
+  readLogs: () => ipcRenderer.invoke('read-logs'),
+  clearLogs: () => ipcRenderer.invoke('clear-logs'),
+  openLogFolder: () => ipcRenderer.invoke('open-log-folder'),
   sendMediaKey: (key) => ipcRenderer.invoke('send-media-key', key),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
   // Titlebar controls
   minimize: () => ipcRenderer.send('window-minimize'),

@@ -5,6 +5,39 @@ const path    = require('path');
 const fs      = require('fs');
 const { exec, spawn } = require('child_process');
 
+// ── Logging ──────────────────────────────────────────────────────────────────
+const LOG_FILE = path.join(app.getPath('userData'), 'app.log');
+
+function logToFile(msg, level = 'INFO') {
+  try {
+    const timestamp = new Date().toISOString();
+    const line = `[${timestamp}] [${level}] ${msg}\n`;
+    
+    // Rotate log if too big (> 500KB)
+    if (fs.existsSync(LOG_FILE) && fs.statSync(LOG_FILE).size > 500 * 1024) {
+      fs.renameSync(LOG_FILE, LOG_FILE + '.old');
+    }
+    
+    fs.appendFileSync(LOG_FILE, line, 'utf8');
+  } catch (err) {
+    // Fallback if logging fails
+  }
+}
+
+// Redirect console to file
+const originalLog = console.log;
+const originalError = console.error;
+console.log = (...args) => {
+  logToFile(args.join(' '), 'INFO');
+  originalLog(...args);
+};
+console.error = (...args) => {
+  logToFile(args.join(' '), 'ERROR');
+  originalError(...args);
+};
+
+logToFile('--- CommandDeck Startup ---', 'BOOT');
+
 // ── Paths ────────────────────────────────────────────────────────────────────
 // CONFIG_PATH: bundled tiles config (read from resources; copied to userData on first run)
 const CONFIG_PATH_BUNDLED = path.join(__dirname, 'config', 'tiles.json');
@@ -256,23 +289,94 @@ ipcMain.handle('write-config', (_e, config) => {
 ipcMain.handle('launch-app', (_e, { path: appPath, args = [] }) => {
   try {
     if (!appPath) return { success: false, error: 'No path configured' };
-    const proc = spawn(appPath, args, { detached: true, stdio: 'ignore', shell: true });
-    proc.unref();
+    
+    // Derived Working Directory (important for Chrome Apps / chrome_proxy.exe)
+    const cwd = path.dirname(appPath);
+    console.log(`[Launch] Attempting: ${appPath}`);
+    console.log(`[Launch] Set CWD: ${cwd}`);
+    if (args && args.length > 0) console.log(`[Launch] Args: ${args.join(' ')}`);
+
+    // Use cmd.exe /c start to launch the app.
+    // This is the most reliable "fire-and-forget" method on Windows for GUI apps.
+    // - start "" : specifies an empty title (required if the path is quoted)
+    // - /D       : sets the working directory
+    const joinedArgs = args.join(' ');
+    const cmdStr = `start "" /D "${cwd}" "${appPath}" ${joinedArgs}`;
+    
+    console.log(`[Launch] CMD: ${cmdStr}`);
+
+    // Switch to exec for the CMD start command. 
+    // exec uses a shell and handles complex quoting better than spawn in this context.
+    exec(cmdStr, { windowsHide: false }, (err) => {
+      if (err) {
+        console.error(`[Launch] Exec Error: ${err.message}`);
+        logToFile(`[Launch] Exec Error: ${err.message}`, 'ERROR');
+      }
+    });
+    
     return { success: true };
   } catch (err) {
+    console.error(`[Launch] Error: ${err.message}`);
     return { success: false, error: err.message };
   }
 });
 
 ipcMain.handle('run-command', (_e, command) => {
+  console.log(`[Shell] Running: ${command}`);
   return new Promise((resolve) => {
-    exec(command, { shell: 'powershell.exe', windowsHide: true }, (err, stdout) => {
+    exec(command, { shell: 'powershell.exe', windowsHide: true }, (err, stdout, stderr) => {
+      if (err) console.error(`[Shell] Error: ${err.message}`);
+      if (stderr) console.warn(`[Shell] Stderr: ${stderr}`);
       resolve({ success: !err, output: stdout, error: err?.message });
     });
   });
 });
 
 ipcMain.handle('send-media-key', (_e, action) => sendMediaKey(action));
+
+ipcMain.handle('read-logs', () => {
+  try {
+    if (!fs.existsSync(LOG_FILE)) return 'No logs yet.';
+    // Read the whole file. Since we rotate at 500KB, this is safe to read.
+    return fs.readFileSync(LOG_FILE, 'utf8');
+  } catch (err) {
+    return `Error reading logs: ${err.message}`;
+  }
+});
+
+ipcMain.handle('get-user-info', () => {
+  try {
+    const os = require('os');
+    return { username: os.userInfo().username.toUpperCase() };
+  } catch {
+    return { username: 'USER' };
+  }
+});
+
+ipcMain.handle('clear-logs', () => {
+  try {
+    fs.writeFileSync(LOG_FILE, '', 'utf8');
+    logToFile('Logs cleared by user.', 'INFO');
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('open-external', (_e, url) => {
+  try {
+    console.log(`[Shell] Opening external URL: ${url}`);
+    shell.openExternal(url);
+    return { success: true };
+  } catch (err) {
+    console.error(`[Shell] Failed to open external URL: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('open-log-folder', () => {
+  shell.showItemInFolder(LOG_FILE);
+});
 
 // ── Window Behavior (always-on-top + hide header) ─────────────────────────────
 ipcMain.handle('set-window-behavior', (_e, { alwaysOnTop, hideHeader }) => {

@@ -18,6 +18,8 @@ const state = {
   contextMenu:      null,
   displays:         [],
   activeDisplayIdx: 0,
+  isRearranging:    false,       // Is drag-and-drop mode active?
+  sortableInst:     null,        // SortableJS instance
 };
 
 // ─── WMO weather code → label + icon ─────────────────────────────────────────
@@ -122,7 +124,8 @@ function applyTileSizing(w, h) {
 function updateClock() {
   const el = document.getElementById('clock-time');
   const de = document.getElementById('clock-date');
-  if (!el) return;
+  const ht = document.getElementById('h-time');
+  const hd = document.getElementById('h-date');
 
   const now  = new Date();
   const hh   = String(now.getHours()).padStart(2, '0');
@@ -131,18 +134,34 @@ function updateClock() {
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const timeStr = `${hh}:${mm}`;
   const dateStr = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+  const shortDate = `${months[now.getMonth()]} ${now.getDate()}`;
 
-  if (el.textContent !== timeStr) el.textContent = timeStr;
-  if (de) de.textContent = dateStr;
+  if (el && el.textContent !== timeStr) el.textContent = timeStr;
+  if (de && de.textContent !== dateStr) de.textContent = dateStr;
+  
+  // Header clock
+  if (ht && ht.textContent !== timeStr) ht.textContent = timeStr;
+  if (hd && hd.textContent !== shortDate) hd.textContent = shortDate;
 }
 
 // ─── Stats update ─────────────────────────────────────────────────────────────
 function applyStats(stats) {
   Object.assign(state.stats, stats);
   state.cpuHistory.push(stats.cpuLoad);
-  if (state.cpuHistory.length > 20) state.cpuHistory.shift();
+  if (state.cpuHistory.length > 50) state.cpuHistory.shift();
 
-  // Update all stat tiles
+  // Header stats
+  const hCpuVal = document.getElementById('h-cpu-val');
+  const hCpuBar = document.getElementById('h-cpu-bar');
+  const hMemVal = document.getElementById('h-mem-val');
+  const hMemBar = document.getElementById('h-mem-bar');
+
+  if (hCpuVal) hCpuVal.textContent = `${Math.round(stats.cpuLoad)}%`;
+  if (hCpuBar) hCpuBar.style.width = `${Math.min(100, stats.cpuLoad)}%`;
+  
+  if (hMemVal) hMemVal.textContent = `${Math.round(stats.memUsed)}%`;
+  if (hMemBar) hMemBar.style.width = `${Math.min(100, stats.memUsed)}%`;
+
   document.querySelectorAll('.tile-stat').forEach((el) => {
     const statKey = el.dataset.stat;
     const value   = getStat(statKey, stats);
@@ -210,10 +229,22 @@ function buildTileBase(tile) {
   return div;
 }
 
+function getTileIconHtml(tile, defaultIconName) {
+  if (tile.iconUrl) {
+    return `<img src="${tile.iconUrl}" class="tile-custom-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+            <div class="tile-icon-fallback" style="display:none">${getIcon(defaultIconName)}</div>`;
+  }
+  return `<div class="tile-icon">${getIcon(defaultIconName)}</div>`;
+}
+
 function renderClockTile(tile) {
   const div = buildTileBase(tile);
   div.classList.add('tile-clock');
+  
+  const iconHtml = tile.iconUrl ? `<div class="tile-clock-custom-icon">${getTileIconHtml(tile, '')}</div>` : '';
+
   div.innerHTML = `
+    ${iconHtml}
     <div class="clock-time font-orbit" id="clock-time">00:00</div>
     <div class="clock-date" id="clock-date">Loading…</div>
   `;
@@ -301,7 +332,7 @@ function renderMediaTile(tile) {
   div.classList.add('tile-media');
   div.innerHTML = `
     ${tile.label ? `<div class="tile-label">${tile.label}</div>` : ''}
-    <div class="tile-icon">${getIcon(tile.icon || 'play')}</div>`;
+    <div class="tile-icon-container">${getTileIconHtml(tile, tile.icon || 'play')}</div>`;
   return div;
 }
 
@@ -311,7 +342,7 @@ function renderActionTile(tile) {
   const label = tile.label ? `<div class="tile-label">${tile.label}</div>` : '';
   div.innerHTML = `
     ${label}
-    <div class="tile-icon">${getIcon(tile.icon || 'zap')}</div>`;
+    <div class="tile-icon-container">${getTileIconHtml(tile, tile.icon || 'zap')}</div>`;
   return div;
 }
 
@@ -321,9 +352,24 @@ function renderTile(tile) {
     case 'weather': return renderWeatherTile(tile);
     case 'stat':    return renderStatTile(tile);
     case 'media':   return renderMediaTile(tile);
+    case 'logs':    return renderLogsTile(tile);
     case 'action':
     default:        return renderActionTile(tile);
   }
+}
+
+function renderLogsTile(tile) {
+  const el = document.createElement('div');
+  el.className = `tile tile-logs ${tile.size || 'small'}`;
+  el.dataset.id = tile.id;
+  el.style.backgroundColor = tile.color || '#0d122b';
+
+  el.innerHTML = `
+    <div class="tile-label">${tile.label || 'LOGS'}</div>
+    <div class="tile-icon">${getIcon(tile.icon || 'terminal')}</div>
+  `;
+  el.addEventListener('click', (e) => handleTileClick(e, tile));
+  return el;
 }
 
 // ─── Canvas Render ────────────────────────────────────────────────────────────
@@ -334,13 +380,24 @@ function renderCanvas() {
   const query = state.searchQuery.toLowerCase();
   const cat   = state.activeCat;
 
-  state.config.tiles.forEach((tile) => {
+  let tiles = [...state.config.tiles];
+  if (state.settings.autoSort) {
+    tiles.sort((a, b) => {
+      const pA = a.priority || 0;
+      const pB = b.priority || 0;
+      if (pB !== pA) return pB - pA;
+      return (a.label || '').localeCompare(b.label || '');
+    });
+  }
+
+  tiles.forEach((tile) => {
     // Category filter
     if (cat !== 'All' && tile.category && tile.category !== cat) return;
     // Search filter
     if (query && !`${tile.label}${tile.type}${tile.id}`.toLowerCase().includes(query)) return;
 
     const el = renderTile(tile);
+    if (state.isRearranging) el.classList.add('rearrange-active');
     canvas.appendChild(el);
   });
 
@@ -376,6 +433,7 @@ function renderSidebar() {
       <span class="sidebar-cat-icon">${CATEGORY_ICONS[cat] || '●'}</span>
       <span class="sidebar-cat-label">${cat}</span>`;
     btn.addEventListener('click', () => {
+      if (state.isRearranging) toggleRearrangeMode(false); // Disable rearrange when switching cats
       state.activeCat = cat;
       renderSidebar();
       renderCanvas();
@@ -386,14 +444,21 @@ function renderSidebar() {
 
 // ─── Search ───────────────────────────────────────────────────────────────────
 document.getElementById('search-input').addEventListener('input', (e) => {
+  if (state.isRearranging) toggleRearrangeMode(false); // Disable rearrange when searching
   state.searchQuery = e.target.value;
   renderCanvas();
 });
 
 // ─── Tile Click Handler ───────────────────────────────────────────────────────
 async function handleTileClick(e, tile) {
+  if (state.isRearranging) return; // Prevent clicks while rearranging
   e.stopPropagation();
   hideContextMenu();
+
+  if (tile.type === 'logs') {
+    openLogsModal();
+    return;
+  }
 
   switch (tile.type) {
     case 'media':
@@ -424,6 +489,7 @@ async function handleTileClick(e, tile) {
 
 // ─── Context Menu ─────────────────────────────────────────────────────────────
 function showContextMenu(e, tile) {
+  if (state.isRearranging) return; // Prevent context menu while rearranging
   e.preventDefault();
   e.stopPropagation();
   hideContextMenu();
@@ -506,12 +572,27 @@ function openEditModal(tile) {
       <select class="form-select" id="ef-type">${typeOpts}</select>
     </div>
     <div class="form-group" id="ef-icon-group" ${isWeather ? 'style="display:none"' : ''}>
-      <label class="form-label">Icon</label>
+      <label class="form-label">Default Icon</label>
       <select class="form-select" id="ef-icon">${iconOpts}</select>
     </div>
+    <div class="form-group" id="ef-icon-url-group" ${isWeather ? 'style="display:none"' : ''}>
+      <div class="label-row">
+        <label class="form-label">Custom Icon URL</label>
+        <button id="btn-find-logo" class="btn-text-action">Find Logo ⬈</button>
+      </div>
+      <div class="url-input-row">
+        <input class="form-input" id="ef-icon-url" value="${tile.iconUrl || ''}" placeholder="Paste PNG/SVG URL here" />
+        <div id="ef-icon-preview" class="icon-input-preview">${tile.iconUrl ? `<img src="${tile.iconUrl}" />` : ''}</div>
+      </div>
+    </div>
     <div class="form-group" id="ef-cmd-group" ${isWeather ? 'style="display:none"' : ''}>
-      <label class="form-label">Command / App Path</label>
-      <input class="form-input" id="ef-command" value="${tile.command || tile.path || ''}" placeholder="e.g. notepad.exe or powershell -Command …" />
+      <label class="form-label" id="ef-cmd-label">${tile.type === 'action' ? 'App Path / Script' : 'Command'}</label>
+      <input class="form-input" id="ef-command" value="${tile.command || tile.path || ''}" placeholder="e.g. C:\Windows\notepad.exe" />
+    </div>
+    <div class="form-group" id="ef-args-group" ${tile.type === 'action' ? '' : 'style="display:none"'}>
+      <label class="form-label">Arguments</label>
+      <input class="form-input" id="ef-args" value="${(tile.args || []).join(' ')}" placeholder="e.g. --profile-directory=Default --app-id=..." />
+      <p class="form-hint">Tip: If you paste a shortcut with arguments into the Path field, I'll split them for you automatically.</p>
     </div>
     ${isWeather ? `
     <div class="form-group" id="ef-weather-group">
@@ -531,6 +612,11 @@ function openEditModal(tile) {
       <select class="form-select" id="ef-size">
         ${['small','wide','tall','large'].map(s => `<option value="${s}" ${s === (tile.size||'small') ? 'selected':''}>${s}</option>`).join('')}
       </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Priority (0-100)</label>
+      <input type="number" class="form-input" id="ef-priority" value="${tile.priority || 0}" min="0" max="100" />
+      <p class="form-hint">Higher priority tiles appear first when Auto-Sort is enabled.</p>
     </div>
     <div class="form-group">
       <label class="form-label">Accent Color</label>
@@ -567,11 +653,63 @@ function openEditModal(tile) {
     });
   }
 
+  // Type change handling (show/hide fields)
+  body.querySelector('#ef-type').addEventListener('change', (e) => {
+    const type = e.target.value;
+    const isAct = type === 'action';
+    body.querySelector('#ef-icon-group').style.display = (type === 'weather') ? 'none' : '';
+    body.querySelector('#ef-icon-url-group').style.display = (type === 'weather') ? 'none' : '';
+    body.querySelector('#ef-cmd-group').style.display = (type === 'weather') ? 'none' : '';
+    body.querySelector('#ef-args-group').style.display = isAct ? '' : 'none';
+    body.querySelector('#ef-cmd-label').textContent = isAct ? 'App Path / Script' : 'Command';
+  });
+
+  // Icon URL Preview & Find Logo
+  const iconUrlInput = body.querySelector('#ef-icon-url');
+  const iconPreview  = body.querySelector('#ef-icon-preview');
+  
+  iconUrlInput.addEventListener('input', (e) => {
+    const url = e.target.value.trim();
+    iconPreview.innerHTML = url ? `<img src="${url}" />` : '';
+  });
+
+  body.querySelector('#btn-find-logo')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const label = body.querySelector('#ef-label').value.trim() || 'app';
+    const query = encodeURIComponent(`${label} logo transparent png`);
+    const searchUrl = `https://www.google.com/search?q=${query}&tbm=isch`;
+    
+    console.log(`[UI] Find Logo clicked for: ${label}`);
+    try {
+      await window.commandDeck.openExternal(searchUrl);
+    } catch (err) {
+      console.error(`[UI] Find Logo failed: ${err.message}`);
+    }
+  });
+
+  // Magic Paste splitting (for Action tiles)
+  body.querySelector('#ef-command').addEventListener('input', (e) => {
+    if (body.querySelector('#ef-type').value !== 'action') return;
+    const val = e.target.value.trim();
+    // If it starts with a quote and has content after the closing quote
+    // e.g. "C:\Path\To\app.exe" --arg1 --arg2
+    const match = val.match(/^"([^"]+)"\s+(.+)$/);
+    if (match) {
+      const path = match[1];
+      const args = match[2];
+      e.target.value = path;
+      const argsInput = body.querySelector('#ef-args');
+      if (argsInput) argsInput.value = args;
+      showToast('Magic Split: Path and Args separated!', 'info', 2000);
+    }
+  });
+
   modal.classList.remove('hidden');
 
   // Save
   document.getElementById('btn-modal-save').onclick = async () => {
     const newType = body.querySelector('#ef-type').value;
+    tile.priority = parseInt(body.querySelector('#ef-priority')?.value || 0, 10);
     tile.label = body.querySelector('#ef-label').value.trim();
     tile.type  = newType;
     tile.size  = body.querySelector('#ef-size').value;
@@ -591,11 +729,18 @@ function openEditModal(tile) {
       if (cityChanged) state.weather = null; // force re-fetch
     } else {
       tile.icon    = body.querySelector('#ef-icon').value;
-      tile.command = body.querySelector('#ef-command').value.trim();
-      delete tile.path;
-      if (tile.command && !tile.command.includes(' ') && tile.command.endsWith('.exe')) {
-        tile.path = tile.command;
+      tile.iconUrl = body.querySelector('#ef-icon-url')?.value.trim() || null;
+      const cmdRaw = body.querySelector('#ef-command').value.trim();
+      const argsRaw = body.querySelector('#ef-args').value.trim();
+
+      if (newType === 'action') {
+        tile.path = cmdRaw;
+        tile.args = argsRaw ? argsRaw.split(' ') : [];
         delete tile.command;
+      } else {
+        tile.command = cmdRaw;
+        delete tile.path;
+        delete tile.args;
       }
     }
 
@@ -671,12 +816,13 @@ const DEFAULT_TILES = [
   { id: 'gpu-temp',    type: 'stat',    stat: 'gpuTemp',  size: 'small', color: '#0a1a3a', label: 'GPU TEMP',   unit: '°C' },
   { id: 'cpu-power',   type: 'stat',    stat: 'cpuPower', size: 'small', color: '#881337', label: 'CPU POWER',  unit: 'W' },
   { id: 'mem-clock',   type: 'stat',    stat: 'memClock', size: 'small', color: '#0a1a3a', label: 'MEM CLOCK',  unit: 'MHZ' },
-  { id: 'gamepad',     type: 'action',  size: 'small', color: '#1539a8', label: 'GAMING',       icon: 'gamepad',     command: '' },
-  { id: 'music-app',   type: 'action',  size: 'small', color: '#1539a8', label: 'MUSIC',        icon: 'music',       command: '' },
-  { id: 'flame',       type: 'action',  size: 'small', color: '#1539a8', label: 'HOTSPOT',      icon: 'flame',       command: '' },
-  { id: 'live-streams',type: 'action',  size: 'wide',  color: '#4c1d95', label: 'LIVE STREAMS', icon: 'radio',       command: '' },
-  { id: 'layers',      type: 'action',  size: 'small', color: '#5b21b6', label: '',             icon: 'layers',      command: '' },
-  { id: 'work-macros', type: 'action',  size: 'small', color: '#9d174d', label: 'WORK MACROS',  icon: 'folder-open', command: '' },
+  { id: 'gemini',     type: 'action',  size: 'small', color: '#1539a8', label: 'GEMINI',       icon: 'zap',         path: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome_proxy.exe', args: ['--profile-directory=Default', '--app-id=gdfaincndogidkdcdkhapmbffkckdkhn'] },
+  { id: 'music-app',   type: 'action',  size: 'small', color: '#1539a8', label: 'MUSIC',        icon: 'music',       path: '', args: [] },
+  { id: 'flame',       type: 'action',  size: 'small', color: '#1539a8', label: 'HOTSPOT',      icon: 'flame',       path: '', args: [] },
+  { id: 'live-streams',type: 'action',  size: 'wide',  color: '#4c1d95', label: 'LIVE STREAMS', icon: 'radio',       path: '', args: [] },
+  { id: 'layers',      type: 'action',  size: 'small', color: '#5b21b6', label: '',             icon: 'layers',      path: '', args: [] },
+  { id: 'work-macros', type: 'action',  size: 'small', color: '#9d174d', label: 'WORK MACROS',  icon: 'folder-open', path: '', args: [] },
+  { id: 'system-logs', type: 'logs', size: 'small', color: '#0d122b', label: 'SYSTEM LOGS', icon: 'terminal' },
 ];
 
 function getDeletedDefaults() {
@@ -733,6 +879,92 @@ function renderRestoreList() {
 // ─── Add Tile Button ──────────────────────────────────────────────────────────
 document.getElementById('btn-add-tile').addEventListener('click', openAddModal);
 
+// ─── Rearrange Mode ──────────────────────────────────────────────────────────
+function toggleRearrangeMode(forceState) {
+  const newState = forceState !== undefined ? forceState : !state.isRearranging;
+  if (newState === state.isRearranging) return;
+
+  // Only allow rearranging in 'All' category with no search
+  if (newState && (state.activeCat !== 'All' || state.searchQuery)) {
+    showToast('Switch to "All" category & clear search to rearrange', 'warn');
+    return;
+  }
+
+  state.isRearranging = newState;
+  const btn = document.getElementById('btn-rearrange');
+  const canvas = document.getElementById('tile-canvas');
+
+  if (state.isRearranging) {
+    if (state.settings.autoSort) {
+      showToast('Disable "Auto-Sort Tiles" in settings to rearrange manually', 'warn');
+      state.isRearranging = false;
+      return;
+    }
+    btn.classList.add('active');
+    canvas.classList.add('rearranging');
+    initSortable();
+    showToast('Rearrange mode active', 'info', 1500);
+  } else {
+    btn.classList.remove('active');
+    canvas.classList.remove('rearranging');
+    destroySortable();
+    showToast('Changes saved', 'success', 1500);
+  }
+
+  renderCanvas(); // Redraw tiles with rearrange handles
+}
+
+function initSortable() {
+  const canvas = document.getElementById('tile-canvas');
+  if (!window.Sortable) {
+    console.error('SortableJS not loaded');
+    return;
+  }
+
+  state.sortableInst = window.Sortable.create(canvas, {
+    animation: 250,
+    ghostClass: 'sortable-ghost',
+    chosenClass: 'sortable-chosen',
+    dragClass: 'sortable-drag',
+    draggable: '.tile',
+    scroll: true,
+    scrollSensitivity: 50,
+    scrollSpeed: 10,
+    bubbleScroll: true,
+    onEnd: async () => {
+      // Get new ID order from DOM
+      const currentIds = Array.from(canvas.querySelectorAll('.tile'))
+        .map(el => el.dataset.id)
+        .filter(Boolean);
+
+      // Reorder state.config.tiles based on these IDs
+      const newTileOrder = [];
+      currentIds.forEach((id) => {
+        const t = state.config.tiles.find(tile => tile.id === id);
+        if (t) newTileOrder.push(t);
+      });
+
+      // Append any tiles that were filtered out (just in case, though we only allow rearranging in 'All')
+      state.config.tiles.forEach((t) => {
+        if (!currentIds.includes(t.id)) newTileOrder.push(t);
+      });
+
+      state.config.tiles = newTileOrder;
+      await saveConfig();
+      showToast('Layout updated', 'success', 800);
+    }
+  });
+}
+
+function destroySortable() {
+  if (state.sortableInst) {
+    state.sortableInst.destroy();
+    state.sortableInst = null;
+  }
+}
+
+document.getElementById('btn-rearrange')?.addEventListener('click', () => toggleRearrangeMode());
+
 // ─── Settings Modal ───────────────────────────────────────────────────────────────
 
 // Apply/remove compact-mode class (hides titlebar, expands app height)
@@ -750,10 +982,56 @@ function openSettingsModal() {
   modal.classList.remove('hidden');
   renderDisplayList();
   renderWindowBehavior();
+  renderSettingsLogs();
 }
 
 function closeSettingsModal() {
   document.getElementById('settings-modal').classList.add('hidden');
+}
+
+// ─── App Logs ──────────────────────────────────────────────────────────────
+async function renderSettingsLogs() {
+  const viewer = document.getElementById('settings-logs-viewer');
+  if (!viewer) return;
+
+  viewer.textContent = 'Fetching logs…';
+  const logs = await window.commandDeck.readLogs();
+  viewer.textContent = logs || 'No log data available.';
+  // Auto-scroll to bottom
+  viewer.scrollTop = viewer.scrollHeight;
+}
+
+function setupLogsListeners() {
+  document.getElementById('btn-logs-refresh')?.addEventListener('click', () => {
+    renderSettingsLogs();
+    showToast('Logs refreshed', 'success', 800);
+  });
+
+  document.getElementById('btn-logs-copy')?.addEventListener('click', async () => {
+    const viewer = document.getElementById('settings-logs-viewer');
+    if (!viewer) return;
+    try {
+      await navigator.clipboard.writeText(viewer.textContent);
+      showToast('Logs copied to clipboard', 'success', 1500);
+    } catch {
+      showToast('Failed to copy logs', 'error');
+    }
+  });
+
+  document.getElementById('btn-logs-folder')?.addEventListener('click', async () => {
+    await window.commandDeck.openLogFolder();
+  });
+
+  document.getElementById('btn-logs-clear')?.addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to clear the log file? This cannot be undone.')) return;
+    const res = await window.commandDeck.clearLogs();
+    if (res.success) {
+      renderSettingsLogs();
+      showToast('Logs cleared', 'success', 1500);
+    } else {
+      showToast('Error clearing logs: ' + res.error, 'error');
+    }
+  });
 }
 
 function renderWindowBehavior() {
@@ -783,6 +1061,16 @@ function renderWindowBehavior() {
         <input type="checkbox" id="toggle-always-on-top" ${alwaysOnTop ? 'checked' : ''} />
         <span class="toggle-track"><span class="toggle-thumb"></span></span>
       </label>
+    </div>
+    <div class="behavior-row">
+      <div class="behavior-info">
+        <span class="behavior-label">Auto-Sort Tiles</span>
+        <span class="behavior-desc">Automatically organize tiles by priority (highest first) and then alphabetically. Disables manual rearranging.</span>
+      </div>
+      <label class="toggle-switch" title="Toggle automatic sorting">
+        <input type="checkbox" id="toggle-auto-sort" ${state.settings.autoSort ? 'checked' : ''} />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
     </div>`;
 
   // Wire toggles
@@ -800,6 +1088,12 @@ function renderWindowBehavior() {
 
   document.getElementById('toggle-hide-header')?.addEventListener('change', syncBehavior);
   document.getElementById('toggle-always-on-top')?.addEventListener('change', syncBehavior);
+  document.getElementById('toggle-auto-sort')?.addEventListener('change', (e) => {
+    state.settings.autoSort = e.target.checked;
+    window.commandDeck.setWindowBehavior(state.settings);
+    renderCanvas();
+    if (state.settings.autoSort && state.isRearranging) toggleRearrangeMode(false);
+  });
 }
 
 function renderDisplayList() {
@@ -901,19 +1195,22 @@ async function init() {
   applyTileSizing();
 
   // Load config and settings in parallel
-  const [cfg, settings] = await Promise.all([
+  const [cfg] = await Promise.all([
     window.commandDeck.readConfig(),
-    window.commandDeck.readSettings(),
   ]);
-  state.config   = cfg;
-  state.settings = settings || {};
+  state.config = cfg;
 
-  // Load display list
   try {
+    state.settings         = await window.commandDeck.readSettings();
     state.displays         = await window.commandDeck.getDisplays();
     state.activeDisplayIdx = typeof state.settings.preferredDisplay === 'number'
       ? state.settings.preferredDisplay
       : 0;
+    
+    // Set dynamic username in header
+    const userInfo = await window.commandDeck.getUserInfo();
+    const profileEl = document.getElementById('header-profile');
+    if (profileEl) profileEl.textContent = userInfo.username || 'USER';
   } catch { /* non-critical */ }
 
   if (!state.config) {
@@ -958,6 +1255,37 @@ async function init() {
     hideHeader:  !!state.settings.hideHeader,
     alwaysOnTop: !!state.settings.alwaysOnTop,
   });
+
+  setupLogsListeners();
+  setupLogsModalListeners();
+}
+
+// ─── Quick Logs Modal ──────────────────────────────────────────────────────
+async function openLogsModal() {
+  const modal = document.getElementById('logs-modal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  refreshQuickLogs();
+}
+
+function closeLogsModal() {
+  document.getElementById('logs-modal')?.classList.add('hidden');
+}
+
+async function refreshQuickLogs() {
+  const viewer = document.getElementById('quick-logs-viewer');
+  if (!viewer) return;
+  viewer.textContent = 'Streaming logs…';
+  const logs = await window.commandDeck.readLogs();
+  viewer.textContent = logs || 'No log history available.';
+  viewer.scrollTop = viewer.scrollHeight;
+}
+
+function setupLogsModalListeners() {
+  document.getElementById('btn-logs-modal-refresh')?.addEventListener('click', () => refreshQuickLogs());
+  document.getElementById('btn-logs-modal-folder')?.addEventListener('click', () => window.commandDeck.openLogFolder());
+  document.getElementById('btn-logs-modal-close')?.addEventListener('click', () => closeLogsModal());
+  document.getElementById('logs-modal-backdrop')?.addEventListener('click', () => closeLogsModal());
 }
 
 init();

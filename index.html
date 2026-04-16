@@ -39,6 +39,9 @@
         <button id="btn-add-tile" class="sidebar-action" title="Add Tile" aria-label="Add Tile">
           <span class="sidebar-action-icon">+</span>
         </button>
+        <button id="btn-rearrange" class="sidebar-action" title="Rearrange Tiles" aria-label="Rearrange Tiles">
+          <span class="sidebar-action-icon">⬚</span>
+        </button>
         <button id="btn-settings" class="sidebar-action" title="Settings" aria-label="Settings">
           <span class="sidebar-action-icon">⚙</span>
         </button>
@@ -61,6 +64,25 @@
             spellcheck="false"
           />
         </div>
+
+        <div id="header-system-bar" class="font-mono">
+          <div class="header-stat-group" id="h-clock-group">
+            <span id="h-time">00:00</span>
+            <span id="h-date">--/--/--</span>
+          </div>
+          <div class="header-divider"></div>
+          <div class="header-stat-group">
+            <span class="h-stat-label">CPU</span>
+            <div class="h-mini-bar-wrap"><div id="h-cpu-bar" class="h-mini-bar"></div></div>
+            <span id="h-cpu-val" class="h-stat-val">0%</span>
+          </div>
+          <div class="header-stat-group">
+            <span class="h-stat-label">MEM</span>
+            <div class="h-mini-bar-wrap"><div id="h-mem-bar" class="h-mini-bar"></div></div>
+            <span id="h-mem-val" class="h-stat-val">0%</span>
+          </div>
+        </div>
+
         <div id="header-right">
           <span id="header-profile">USER</span>
         </div>
@@ -88,6 +110,24 @@
         <div class="spacer"></div>
         <button id="btn-modal-cancel" class="btn-secondary">Cancel</button>
         <button id="btn-modal-save" class="btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Logs Window (Quick View) ───────────────────── -->
+  <div id="logs-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="logs-modal-title">
+    <div id="logs-modal-backdrop"></div>
+    <div id="logs-modal-panel">
+      <div id="logs-modal-header">
+        <h2 id="logs-modal-title">System Diagnostic Logs</h2>
+        <div class="logs-modal-actions">
+          <button id="btn-logs-modal-refresh" class="btn-secondary">Refresh</button>
+          <button id="btn-logs-modal-folder" class="btn-secondary" title="Open logs in Explorer">Folder</button>
+          <button id="btn-logs-modal-close" aria-label="Close logs">✕</button>
+        </div>
+      </div>
+      <div id="logs-modal-body">
+        <div id="quick-logs-viewer" class="logs-viewer font-mono">Loading diagnostic stream…</div>
       </div>
     </div>
   </div>
@@ -130,6 +170,20 @@
             <button id="btn-restore-all" class="btn-secondary">↺ Restore All Missing</button>
           </div>
         </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">App Logs</div>
+          <div class="settings-section-desc">View diagnostic logs for application events and errors.</div>
+          <div id="settings-logs-container">
+            <div id="settings-logs-viewer" class="logs-viewer font-mono">Loading logs…</div>
+            <div class="logs-actions">
+              <button id="btn-logs-refresh" class="btn-secondary">Refresh</button>
+              <button id="btn-logs-copy" class="btn-secondary">Copy</button>
+              <button id="btn-logs-folder" class="btn-secondary" title="Open logs in Explorer">Folder</button>
+              <button id="btn-logs-clear" class="btn-danger">Clear</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div id="settings-modal-footer">
         <button id="btn-settings-done" class="btn-primary">Done</button>
@@ -138,6 +192,7 @@
   </div>
 
   <!-- ── Renderer ────────────────────────────────────── -->
+  <script src="src/lib/Sortable.min.js"></script>
   <script type="module" src="src/app.js"></script>
 </body>
 </html>
