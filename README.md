@@ -1,6 +1,6 @@
 # ⬡ CommandDeck
 
-> A tile-based hotkey dashboard for Windows 11 — launch apps, monitor live system stats, control media, and display real-time information from a single customizable interface.
+> A tile-based hotkey dashboard for Windows 11 — launch apps, monitor live system stats, control media, and display real-time information from a single customizable interface.  Free Open Source software to be utilized with cheap 7 inch screens like https://a.co/d/05MqhGJp.
 
 ![CommandDeck](https://img.shields.io/badge/platform-Windows%2011-0078D4?style=flat-square&logo=windows)
 ![Electron](https://img.shields.io/badge/Electron-33-47848F?style=flat-square&logo=electron)
