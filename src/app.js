@@ -508,7 +508,11 @@ function renderCanvas() {
   const willBeVisible = new Set(
     state.config.tiles
       .filter(t => t.type === 'camera')
-      .filter(t => cat === 'All' || t.category === cat)
+      .filter(t => {
+        if (cat === 'All') return true;
+        const cats = Array.isArray(t.categories) ? t.categories : (t.category ? [t.category] : []);
+        return cats.includes(cat);
+      })
       .filter(t => !query || `${t.label}${t.type}${t.id}`.toLowerCase().includes(query))
       .map(t => t.id)
   );
@@ -521,7 +525,10 @@ function renderCanvas() {
 
   tiles.forEach((tile) => {
     // Category filter
-    if (cat !== 'All' && tile.category !== cat) return;
+    if (cat !== 'All') {
+      const cats = Array.isArray(tile.categories) ? tile.categories : (tile.category ? [tile.category] : []);
+      if (!cats.includes(cat)) return;
+    }
     // Search filter
     if (query && !`${tile.label}${tile.type}${tile.id}`.toLowerCase().includes(query)) return;
 
@@ -774,6 +781,14 @@ async function removeCategory(cat) {
   state.config.categories = state.config.categories.filter(c => c !== cat);
   if (state.activeCat === cat) state.activeCat = 'All';
   
+  // Clean up tiles
+  state.config.tiles.forEach(t => {
+    if (t.category === cat) delete t.category;
+    if (Array.isArray(t.categories)) {
+      t.categories = t.categories.filter(c => c !== cat);
+    }
+  });
+
   await saveConfig();
   renderSidebar();
   renderCanvas();
@@ -798,7 +813,13 @@ async function renameCategory(oldName) {
       
       // Update tile assignments
       state.config.tiles.forEach(t => {
-        if (t.category === oldName) t.category = trimmed;
+        if (t.category === oldName) {
+          t.categories = [trimmed];
+          delete t.category;
+        } else if (Array.isArray(t.categories)) {
+          const idx = t.categories.indexOf(oldName);
+          if (idx !== -1) t.categories[idx] = trimmed;
+        }
       });
       
       await saveConfig();
@@ -971,10 +992,15 @@ function openEditModal(tile) {
       </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Page (Category)</label>
-      <select class="form-select" id="ef-category">
-        ${(state.config.categories || ['All']).map(c => `<option value="${esc(c)}" ${c === (tile.category || 'All') ? 'selected' : ''}>${esc(c)}</option>`).join('')}
-      </select>
+      <label class="form-label">Pages</label>
+      <div class="checkbox-group" id="ef-categories">
+        ${(state.config.categories || ['All']).filter(c => c !== 'All').map(c => {
+          const cats = Array.isArray(tile.categories) ? tile.categories : (tile.category ? [tile.category] : []);
+          const isChecked = cats.includes(c);
+          return `<label class="checkbox-label"><input type="checkbox" value="${esc(c)}" ${isChecked ? 'checked' : ''} /> ${esc(c)}</label>`;
+        }).join('')}
+        ${(state.config.categories || ['All']).length <= 1 ? '<span style="color:var(--text-dim);font-size:13px">No custom pages created yet.</span>' : ''}
+      </div>
     </div>`;
 
   // Color swatch interaction
@@ -1077,7 +1103,12 @@ function openEditModal(tile) {
     tile.label = body.querySelector('#ef-label').value.trim();
     tile.type  = newType;
     tile.size  = body.querySelector('#ef-size').value;
-    tile.category = body.querySelector('#ef-category').value;
+    
+    // Gather checked categories
+    const checkedCats = Array.from(body.querySelectorAll('#ef-categories input[type="checkbox"]:checked')).map(cb => cb.value);
+    tile.categories = checkedCats;
+    delete tile.category;
+
     tile.color = chosenColor;
 
     if (newType === 'weather') {
@@ -1141,7 +1172,7 @@ function openEditModal(tile) {
 function openAddModal() {
   // Default the new tile's category to the currently-active page
   // so it appears on that page immediately after saving.
-  const defaultCategory = state.activeCat !== 'All' ? state.activeCat : undefined;
+  const defaultCategories = state.activeCat !== 'All' ? [state.activeCat] : [];
   const newTile = {
     id:       `tile-${Date.now()}`,
     type:     'action',
@@ -1149,7 +1180,7 @@ function openAddModal() {
     color:    '#1539a8',
     label:    'New Tile',
     icon:     'zap',
-    category: defaultCategory,
+    categories: defaultCategories,
   };
   state.config.tiles.push(newTile);
   openEditModal(newTile);
@@ -1173,19 +1204,24 @@ async function deleteTile(id) {
   showToast('Tile deleted', 'success');
 }
 
-// Remove a tile from the current page only (clears its category assignment)
+// Remove a tile from the current page only
 // so it still exists and is visible on the All page.
 async function removeTileFromPage(tile) {
   const cat = state.activeCat;
   if (cat === 'All') return;
   const t = state.config.tiles.find(t => t.id === tile.id);
   if (!t) return;
-  // Stop its stream — after unassigning it won't render on this page anymore.
+  
+  const cats = Array.isArray(t.categories) ? t.categories : (t.category ? [t.category] : []);
+  t.categories = cats.filter(c => c !== cat);
+  delete t.category;
+
+  // Stop its stream if it's no longer visible anywhere currently shown
   if (t.type === 'camera') {
     window.commandDeck.stopCameraStream(t.id);
     delete t._streamUrl;
   }
-  delete t.category;
+  
   await saveConfig();
   renderCanvas();
   showToast(`Removed from "${cat}"`, 'success');
@@ -1312,14 +1348,37 @@ function toggleRearrangeMode(forceState) {
     showToast('Changes saved', 'success', 1500);
   }
 
+  renderSidebar(); // Redraw sidebar
   renderCanvas(); // Redraw tiles with rearrange handles
 }
 
 function initSortable() {
   const canvas = document.getElementById('tile-canvas');
+  const sidebarNav = document.getElementById('sidebar-nav');
   if (!window.Sortable) {
     console.error('SortableJS not loaded');
     return;
+  }
+
+  // Sidebar sorting
+  if (sidebarNav) {
+    state.sidebarSortableInst = window.Sortable.create(sidebarNav, {
+      animation: 150,
+      draggable: '.sidebar-cat:not(.sidebar-add-cat)',
+      filter: '.sidebar-cat[title="All"]', // Make "All" non-draggable
+      onMove: (evt) => {
+        // Prevent dropping before "All"
+        if (evt.related.title === 'All') return false;
+      },
+      onEnd: async () => {
+        const newCats = Array.from(sidebarNav.querySelectorAll('.sidebar-cat:not(.sidebar-add-cat)'))
+          .map(el => el.title)
+          .filter(title => title);
+
+        state.config.categories = ['All', ...newCats.filter(c => c !== 'All')];
+        await saveConfig();
+      }
+    });
   }
 
   state.sortableInst = window.Sortable.create(canvas, {
@@ -1366,6 +1425,10 @@ function destroySortable() {
   if (state.sortableInst) {
     state.sortableInst.destroy();
     state.sortableInst = null;
+  }
+  if (state.sidebarSortableInst) {
+    state.sidebarSortableInst.destroy();
+    state.sidebarSortableInst = null;
   }
 }
 
