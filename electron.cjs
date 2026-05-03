@@ -257,11 +257,22 @@ function extractJpegFrames(buf) {
   return { frames, remainder: start !== -1 ? buf.slice(start) : Buffer.alloc(0) };
 }
 
+function killProcessTree(proc) {
+  if (!proc || !proc.pid) return;
+  try {
+    if (process.platform === 'win32') {
+      exec(`taskkill /F /T /PID ${proc.pid}`, { windowsHide: true }, () => {});
+    } else {
+      proc.kill('SIGKILL');
+    }
+  } catch (_) {}
+}
+
 function stopCameraStream(tileId) {
   pendingStreams.delete(tileId); // Cancel any async start in progress
   const s = activeStreams.get(tileId);
   if (!s) return;
-  try { if (s.ffmpeg) s.ffmpeg.kill('SIGKILL'); } catch (_) {}
+  killProcessTree(s.ffmpeg);
   if (s.clients) s.clients.forEach(res => { try { res.end(); } catch (_) {} });
   if (s.server) try { s.server.close(); } catch (_) {}
   activeStreams.delete(tileId);
@@ -342,7 +353,7 @@ async function startCameraStream(tileId, rtspUrl) {
 
   // Final check if aborted during listen
   if (pendingStreams.get(tileId) !== streamId) {
-    try { ffmpeg.kill('SIGKILL'); } catch (_) {}
+    killProcessTree(ffmpeg);
     try { server.close(); } catch (_) {}
     activeStreams.delete(tileId);
     return { success: false, error: 'Aborted during listen' };
