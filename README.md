@@ -17,6 +17,8 @@
 | 📊 **System Stats** | CPU load (with sparklines), temp, speed, GPU data, and RAM usage |
 | 🎵 **Media Controls** | Play/Pause, Next/Prev, Mute, Volume via `user32` P/Invoke |
 | 🚀 **Shell Commands** | Dedicated PowerShell script support with proper character escaping |
+| 📷 **Camera Streams**| Display live RTSP camera feeds (converted to MJPEG) |
+| 📑 **Multi-Page Layout**| Organize tiles into custom pages, assign to multiple pages, and drag-and-drop to reorder |
 | 🛠 **Utility Tools** | Quick header access for Touchscreen realignment helper |
 | 📜 **Diagnostic Logs** | Centralized dashboard-mounted system log viewer |
 | 🎨 **Fully Editable** | Right-click any tile to edit label, icon, color, or behavior |
@@ -113,6 +115,12 @@ Dedicated tile type for complex PowerShell cmdlets and scripts.
 - Handles quotes and special characters reliably via internal escaping.  
 - Bypasses the auto-splitting logic to ensure your cmdlet remains intact.
 
+### 📷 Camera
+Displays a live RTSP camera stream on the dashboard.
+
+- Automatically converts RTSP to MJPEG using `ffmpeg` for low-latency browser display.
+- Efficient background processing: streams automatically stop when the page is not active to save resources.
+
 ---
 
 ## ⚙ Configuration
@@ -135,14 +143,16 @@ All tile configuration is stored in `config/tiles.json`. You can edit it directl
 
 | Field | Values | Description |
 |---|---|---|
-| `type` | `action` `shell` `media` `stat` `clock` `weather` | Tile behavior |
+| `type` | `action` `shell` `media` `stat` `clock` `weather` `camera` | Tile behavior |
 | `size` | `small` `wide` `tall` `large` | Grid span |
+| `categories` | Array of strings | Pages the tile appears on |
 | `color` | Any hex color | Background color |
 | `icon` | See icon list below | SVG icon name |
 | `path` | File path string | App to launch (`action` type only) |
 | `command` | PowerShell/CMD string | Script to run (`shell` type only) |
 | `stat` | See stat keys above | Live metric to display |
 | `action` | See media actions above | Media key to send |
+| `streamUrl` | RTSP URL string | Camera stream URL (`camera` type only) |
 
 ### Available Icons
 
