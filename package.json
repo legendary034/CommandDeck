@@ -1,7 +1,8 @@
 {
-  "name": "command-deck",
+  "name": "commanddeck",
+  "productName": "CommandDeck",
   "version": "1.0.0",
-  "description": "Tile-based hotkey dashboard for Windows 11",
+  "description": "CommandDeck",
   "main": "electron.cjs",
   "scripts": {
     "dev": "electron .",
@@ -27,6 +28,7 @@
       "!dist"
     ],
     "win": {
+      "executableName": "CommandDeck",
       "target": [
         "nsis",
         "portable"

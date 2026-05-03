@@ -26,6 +26,10 @@ contextBridge.exposeInMainWorld('commandDeck', {
   sendMediaKey: (key) => ipcRenderer.invoke('send-media-key', key),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  // Camera streaming
+  startCameraStream: (tileId, rtspUrl) => ipcRenderer.invoke('camera:start', tileId, rtspUrl),
+  stopCameraStream:  (tileId)          => ipcRenderer.invoke('camera:stop',  tileId),
+
   // Titlebar controls
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),

@@ -506,6 +506,21 @@ body.compact-mode #app {
   transform: translateY(0) scale(.98);
 }
 
+.tile.tile-spacer:not(.rearrange-active) {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: default !important;
+}
+
+.tile.tile-spacer:not(.rearrange-active):hover {
+  transform: none !important;
+}
+
+.tile.tile-spacer:not(.rearrange-active)::after {
+  display: none;
+}
+
 /* Tile sizes */
 .tile.wide  { grid-column: span 2; }
 .tile.tall  { grid-row: span 2; }
@@ -804,6 +819,225 @@ body.compact-mode #app {
   background: rgba(255,255,255,.07);
   margin: 4px 0;
 }
+
+/* ─────────────────────────────────────────────────────────
+   CAMERA TILE
+───────────────────────────────────────────────────────── */
+.tile-camera {
+  padding: 10px;
+  overflow: hidden;
+}
+
+/* Unconfigured state */
+.camera-no-stream {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  opacity: .5;
+}
+
+.camera-icon-wrap .icon {
+  width: 40px;
+  height: 40px;
+  stroke: rgba(255,255,255,.7);
+}
+
+.camera-hint {
+  font-size: 10px;
+  letter-spacing: .08em;
+  color: rgba(255,255,255,.5);
+  text-align: center;
+}
+
+/* Thumbnail wrapper */
+.camera-thumb-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.camera-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Connecting / error overlay inside thumbnail */
+.camera-connecting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: rgba(255,255,255,.5);
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+
+.camera-connecting .icon {
+  width: 28px;
+  height: 28px;
+  stroke: rgba(0,212,255,.6);
+  animation: cam-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes cam-pulse {
+  0%, 100% { opacity: .5; }
+  50%       { opacity: 1; }
+}
+
+/* "Click to expand" hint shown on tile hover */
+.camera-expand-hint {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(transparent, rgba(0,0,0,.75));
+  color: rgba(255,255,255,.7);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 12px 0 6px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.tile-camera:hover .camera-expand-hint { opacity: 1; }
+
+/* ─────────────────────────────────────────────────────────
+   CAMERA EXPAND OVERLAY
+   Covers the tile-canvas area (positioned inside #tile-canvas)
+───────────────────────────────────────────────────────── */
+.camera-expand-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(.97);
+  transition: opacity 200ms ease, transform 200ms ease;
+  pointer-events: none;
+}
+
+.camera-expand-overlay.visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: all;
+}
+
+.camera-expand-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(8,8,26,.85);
+  border-bottom: 1px solid rgba(0,212,255,.15);
+  flex-shrink: 0;
+}
+
+.camera-expand-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .15em;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.camera-expand-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  color: #ff4444;
+  background: rgba(255,50,50,.12);
+  border: 1px solid rgba(255,50,50,.3);
+  border-radius: 20px;
+  padding: 3px 10px;
+}
+
+.camera-expand-badge .icon {
+  width: 13px;
+  height: 13px;
+  stroke: #ff4444;
+  animation: cam-pulse 1.5s ease-in-out infinite;
+}
+
+.camera-expand-close {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 8px;
+  color: rgba(255,255,255,.7);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.camera-expand-close .icon { width: 14px; height: 14px; }
+.camera-expand-close:hover {
+  background: rgba(255,255,255,.12);
+  border-color: rgba(255,255,255,.25);
+  color: #fff;
+}
+
+.camera-expand-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #000;
+}
+
+.camera-expand-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.camera-expand-nostream {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: rgba(255,255,255,.35);
+  font-size: 13px;
+  letter-spacing: .05em;
+  text-align: center;
+}
+
+.camera-expand-nostream .icon {
+  width: 48px;
+  height: 48px;
+  stroke: rgba(255,100,50,.5);
+}
+
+
 
 /* ─────────────────────────────────────────────────────────
    EDIT MODAL

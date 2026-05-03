@@ -356,6 +356,8 @@ function renderTile(tile) {
     case 'stat':    return renderStatTile(tile);
     case 'media':   return renderMediaTile(tile);
     case 'logs':    return renderLogsTile(tile);
+    case 'camera':  return renderCameraTile(tile);
+    case 'spacer':  return renderSpacerTile(tile);
     case 'action':
     default:        return renderActionTile(tile);
   }
@@ -373,6 +375,115 @@ function renderLogsTile(tile) {
   `;
   el.addEventListener('click', (e) => handleTileClick(e, tile));
   return el;
+}
+
+// ─── Camera Tile ──────────────────────────────────────────────────────────────
+function renderCameraTile(tile) {
+  const div = document.createElement('div');
+  div.className = `tile tile-camera ${tile.size || 'wide'}`;
+  div.dataset.id = tile.id;
+  div.style.background = tile.color || '#0a1628';
+
+  if (!tile.rtspUrl) {
+    // Not configured yet
+    div.innerHTML = `
+      <div class="tile-label">${tile.label || 'CAMERA'}</div>
+      <div class="camera-no-stream">
+        <div class="camera-icon-wrap">${getIcon('camera')}</div>
+        <div class="camera-hint">Right-click → Edit to add RTSP URL</div>
+      </div>`;
+    div.addEventListener('contextmenu', (e) => showContextMenu(e, tile));
+    return div;
+  }
+
+  // Has RTSP — show live thumbnail. The <img> will load the MJPEG stream
+  // once we get the local HTTP URL back from the main process.
+  div.innerHTML = `
+    <div class="tile-label">${tile.label || 'CAMERA'}</div>
+    <div class="camera-thumb-wrap">
+      <div class="camera-connecting">${getIcon('video')}<span>Connecting…</span></div>
+      <img class="camera-thumb-img" style="display:none" />
+      <div class="camera-expand-hint">Click to expand</div>
+    </div>`;
+
+  const img = div.querySelector('.camera-thumb-img');
+  const connecting = div.querySelector('.camera-connecting');
+
+  // Start the stream
+  window.commandDeck.startCameraStream(tile.id, tile.rtspUrl).then(res => {
+    if (res.success) {
+      img.src = res.url;
+      img.onload = () => {
+        connecting.style.display = 'none';
+        img.style.display = 'block';
+      };
+      img.onerror = () => {
+        connecting.innerHTML = `${getIcon('alert-triangle')}<span>Stream error</span>`;
+      };
+      // Store URL on tile for the expand modal
+      tile._streamUrl = res.url;
+    } else {
+      connecting.innerHTML = `${getIcon('alert-triangle')}<span>${res.error || 'Failed'}</span>`;
+    }
+  });
+
+  div.addEventListener('click', (e) => {
+    if (state.isRearranging) return;
+    e.stopPropagation();
+    openCameraExpandModal(tile);
+  });
+  div.addEventListener('contextmenu', (e) => showContextMenu(e, tile));
+  return div;
+}
+
+// ─── Spacer Tile ──────────────────────────────────────────────────────────────
+function renderSpacerTile(tile) {
+  const div = document.createElement('div');
+  div.className = `tile tile-spacer ${tile.size || 'small'}`;
+  div.dataset.id = tile.id;
+  div.style.backgroundColor = 'transparent';
+  
+  if (state.isRearranging) {
+    div.style.border = '1px dashed rgba(255,255,255,0.2)';
+    div.style.background = 'rgba(0,0,0,0.2)';
+    div.innerHTML = `<div style="color: rgba(255,255,255,0.3); font-size: 10px; display: flex; align-items: center; justify-content: center; height: 100%; letter-spacing: 0.1em; pointer-events: none;">[SPACER]</div>`;
+  }
+  
+  div.addEventListener('contextmenu', (e) => showContextMenu(e, tile));
+  return div;
+}
+
+function openCameraExpandModal(tile) {
+  const canvas = document.getElementById('tile-canvas');
+  // Remove any existing camera modal
+  document.getElementById('camera-expand-overlay')?.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'camera-expand-overlay';
+  overlay.className = 'camera-expand-overlay';
+
+  const streamUrl = tile._streamUrl || '';
+  overlay.innerHTML = `
+    <div class="camera-expand-header">
+      <span class="camera-expand-title">${tile.label || 'CAMERA'}</span>
+      <div class="camera-expand-badge">${getIcon('video')}<span>LIVE</span></div>
+      <button class="camera-expand-close" id="btn-camera-close">${getIcon('x')} Close</button>
+    </div>
+    <div class="camera-expand-body">
+      ${ streamUrl
+        ? `<img class="camera-expand-img" src="${streamUrl}" />`
+        : `<div class="camera-expand-nostream">${getIcon('alert-triangle')}<p>Stream not connected.<br>Ensure ffmpeg is installed and the RTSP URL is correct.</p></div>`
+      }
+    </div>`;
+
+  canvas.style.position = 'relative';
+  canvas.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('visible'));
+
+  overlay.querySelector('#btn-camera-close').addEventListener('click', () => {
+    overlay.classList.remove('visible');
+    setTimeout(() => overlay.remove(), 220);
+  });
 }
 
 // ─── Canvas Render ────────────────────────────────────────────────────────────
@@ -393,9 +504,24 @@ function renderCanvas() {
     });
   }
 
+  // ── Stop camera streams that won't appear in this render ──────────────────
+  const willBeVisible = new Set(
+    state.config.tiles
+      .filter(t => t.type === 'camera')
+      .filter(t => cat === 'All' || t.category === cat)
+      .filter(t => !query || `${t.label}${t.type}${t.id}`.toLowerCase().includes(query))
+      .map(t => t.id)
+  );
+  state.config.tiles
+    .filter(t => t.type === 'camera' && !willBeVisible.has(t.id) && t._streamUrl)
+    .forEach(t => {
+      window.commandDeck.stopCameraStream(t.id);
+      delete t._streamUrl;
+    });
+
   tiles.forEach((tile) => {
     // Category filter
-    if (cat !== 'All' && tile.category && tile.category !== cat) return;
+    if (cat !== 'All' && tile.category !== cat) return;
     // Search filter
     if (query && !`${tile.label}${tile.type}${tile.id}`.toLowerCase().includes(query)) return;
 
@@ -511,7 +637,9 @@ async function handleTileClick(e, tile) {
     case 'stat':
     case 'clock':
     case 'weather':
-      // no-op on click for info tiles
+    case 'camera':
+    case 'spacer':
+      // no-op on click — camera handles its own click listener
       break;
   }
 }
@@ -523,6 +651,8 @@ function showContextMenu(e, tile) {
   e.stopPropagation();
   hideContextMenu();
 
+  const isOnSpecificPage = state.activeCat !== 'All';
+
   const menu = document.createElement('div');
   menu.id = 'context-menu';
   menu.innerHTML = `
@@ -530,15 +660,22 @@ function showContextMenu(e, tile) {
       <span>${getIcon('edit')}&nbsp; Edit Tile</span>
     </div>
     <div class="ctx-sep"></div>
+    ${isOnSpecificPage ? `
+    <div class="ctx-item" id="ctx-remove-from-page">
+      <span>${getIcon('x')}&nbsp; Remove from Page</span>
+    </div>
+    <div class="ctx-item danger" id="ctx-delete">
+      <span>${getIcon('trash')}&nbsp; Delete Tile</span>
+    </div>` : `
     <div class="ctx-item danger" id="ctx-delete">
       <span>${getIcon('trash')}&nbsp; Remove Tile</span>
-    </div>`;
+    </div>`}`;
 
   document.body.appendChild(menu);
 
   // Position
   const { clientX: x, clientY: y } = e;
-  const mw = 170, mh = 80;
+  const mw = 180, mh = isOnSpecificPage ? 110 : 80;
   menu.style.left = `${Math.min(x, window.innerWidth  - mw - 8)}px`;
   menu.style.top  = `${Math.min(y, window.innerHeight - mh - 8)}px`;
 
@@ -546,6 +683,9 @@ function showContextMenu(e, tile) {
 
   menu.querySelector('#ctx-edit').addEventListener('click', () => {
     hideContextMenu(); openEditModal(tile);
+  });
+  menu.querySelector('#ctx-remove-from-page')?.addEventListener('click', () => {
+    hideContextMenu(); removeTileFromPage(tile);
   });
   menu.querySelector('#ctx-delete').addEventListener('click', () => {
     hideContextMenu(); deleteTile(tile.id);
@@ -733,6 +873,7 @@ function openEditModal(tile) {
   const body  = document.getElementById('edit-modal-body');
 
   const isWeather = tile.type === 'weather';
+  const isCamera  = tile.type === 'camera';
 
   const TYPE_LABELS = {
     action:  'Application (EXE/Path)',
@@ -741,9 +882,11 @@ function openEditModal(tile) {
     stat:    'System Stat',
     clock:   'Clock Widget',
     weather: 'Weather Widget',
+    camera:  'Camera Stream (RTSP)',
+    spacer:  'Blank Spacer',
   };
 
-  const typeOpts = ['action','shell','media','stat','clock','weather']
+  const typeOpts = ['action','shell','media','stat','clock','weather','camera','spacer']
     .map(t => `<option value="${t}" ${t === tile.type ? 'selected' : ''}>${TYPE_LABELS[t] || t}</option>`)
     .join('');
 
@@ -767,11 +910,11 @@ function openEditModal(tile) {
       <label class="form-label">Type</label>
       <select class="form-select" id="ef-type">${typeOpts}</select>
     </div>
-    <div class="form-group" id="ef-icon-group" ${isWeather ? 'style="display:none"' : ''}>
+    <div class="form-group" id="ef-icon-group" ${(isWeather || isCamera) ? 'style="display:none"' : ''}>
       <label class="form-label">Default Icon</label>
       <select class="form-select" id="ef-icon">${iconOpts}</select>
     </div>
-    <div class="form-group" id="ef-icon-url-group" ${isWeather ? 'style="display:none"' : ''}>
+    <div class="form-group" id="ef-icon-url-group" ${(isWeather || isCamera) ? 'style="display:none"' : ''}>
       <div class="label-row">
         <label class="form-label">Custom Icon URL</label>
         <button id="btn-find-logo" class="btn-text-action">Find Logo ⬈</button>
@@ -781,7 +924,7 @@ function openEditModal(tile) {
         <div id="ef-icon-preview" class="icon-input-preview">${tile.iconUrl ? `<img src="${esc(tile.iconUrl)}" />` : ''}</div>
       </div>
     </div>
-    <div class="form-group" id="ef-cmd-group" ${isWeather ? 'style="display:none"' : ''}>
+    <div class="form-group" id="ef-cmd-group" ${(isWeather || isCamera) ? 'style="display:none"' : ''}>
       <label class="form-label" id="ef-cmd-label">${tile.type === 'shell' ? 'PowerShell Command' : (tile.type === 'action' ? 'App Path / Script' : 'Command')}</label>
       <input class="form-input" id="ef-command" value="${esc(tile.command || tile.path)}" placeholder="e.g. C:\Windows\notepad.exe" />
     </div>
@@ -802,6 +945,12 @@ function openEditModal(tile) {
         <button class="unit-btn ${currentUnit === 'fahrenheit' ? 'active' : ''}" id="ef-unit-f" data-unit="fahrenheit">°F — Fahrenheit</button>
         <button class="unit-btn ${currentUnit === 'celsius' ? 'active' : ''}" id="ef-unit-c" data-unit="celsius">°C — Celsius</button>
       </div>
+    </div>` : ''}
+    ${isCamera ? `
+    <div class="form-group" id="ef-rtsp-group">
+      <label class="form-label">RTSP Stream URL</label>
+      <input class="form-input" id="ef-rtsp-url" value="${esc(tile.rtspUrl || '')}" placeholder="rtsp://user:pass@192.168.1.x:554/stream" spellcheck="false" />
+      <p class="form-hint">Requires ffmpeg to be installed and accessible in your system PATH.</p>
     </div>` : ''}
     <div class="form-group">
       <label class="form-label">Size</label>
@@ -857,16 +1006,25 @@ function openEditModal(tile) {
 
   // Type change handling (show/hide fields)
   body.querySelector('#ef-type').addEventListener('change', (e) => {
-    const type = e.target.value;
+    const type    = e.target.value;
     const isAct   = type === 'action';
     const isShell = type === 'shell';
     const isWeath = type === 'weather';
+    const isCam   = type === 'camera';
+    const isSpace = type === 'spacer';
+    const hideStd = isWeath || isCam || isSpace;
 
-    body.querySelector('#ef-icon-group').style.display = isWeath ? 'none' : '';
-    body.querySelector('#ef-icon-url-group').style.display = isWeath ? 'none' : '';
-    body.querySelector('#ef-cmd-group').style.display = isWeath ? 'none' : '';
-    body.querySelector('#ef-args-group').style.display = isAct ? '' : 'none';
-    
+    body.querySelector('#ef-icon-group').style.display    = hideStd ? 'none' : '';
+    body.querySelector('#ef-icon-url-group').style.display = hideStd ? 'none' : '';
+    body.querySelector('#ef-cmd-group').style.display     = hideStd ? 'none' : '';
+    body.querySelector('#ef-args-group').style.display    = isAct   ? ''     : 'none';
+    const rtspGroup  = body.querySelector('#ef-rtsp-group');
+    const weatGroup  = body.querySelector('#ef-weather-group');
+    const colorsRow  = body.querySelector('#ef-colors');
+    if (rtspGroup)  rtspGroup.style.display  = isCam   ? '' : 'none';
+    if (weatGroup)  weatGroup.style.display  = isWeath ? '' : 'none';
+    if (colorsRow)  colorsRow.parentElement.style.display = isSpace ? 'none' : '';
+
     body.querySelector('#ef-cmd-label').textContent = isShell ? 'PowerShell Command' : (isAct ? 'App Path / Script' : 'Command');
   });
 
@@ -929,15 +1087,19 @@ function openEditModal(tile) {
         ...(tile.config || {}),
         city: newCity,
         unit: chosenUnit,
-        // Clear cached coords when city changes so it re-geocodes
         lat: cityChanged ? null : (tile.config?.lat ?? null),
         lon: cityChanged ? null : (tile.config?.lon ?? null),
       };
-      if (cityChanged) state.weather = null; // force re-fetch
+      if (cityChanged) state.weather = null;
+    } else if (newType === 'camera') {
+      tile.rtspUrl = (body.querySelector('#ef-rtsp-url')?.value || '').trim() || null;
+      // Stop any existing stream so it restarts with new URL
+      window.commandDeck.stopCameraStream(tile.id);
+      delete tile._streamUrl;
     } else {
       tile.icon    = body.querySelector('#ef-icon').value;
       tile.iconUrl = body.querySelector('#ef-icon-url')?.value.trim() || null;
-      const cmdRaw = body.querySelector('#ef-command').value.trim();
+      const cmdRaw  = body.querySelector('#ef-command').value.trim();
       const argsRaw = body.querySelector('#ef-args').value.trim();
 
       if (newType === 'action') {
@@ -977,13 +1139,17 @@ function openEditModal(tile) {
 }
 
 function openAddModal() {
+  // Default the new tile's category to the currently-active page
+  // so it appears on that page immediately after saving.
+  const defaultCategory = state.activeCat !== 'All' ? state.activeCat : undefined;
   const newTile = {
-    id:    `tile-${Date.now()}`,
-    type:  'action',
-    size:  'small',
-    color: '#1539a8',
-    label: 'New Tile',
-    icon:  'zap',
+    id:       `tile-${Date.now()}`,
+    type:     'action',
+    size:     'small',
+    color:    '#1539a8',
+    label:    'New Tile',
+    icon:     'zap',
+    category: defaultCategory,
   };
   state.config.tiles.push(newTile);
   openEditModal(newTile);
@@ -995,10 +1161,34 @@ function closeEditModal() {
 }
 
 async function deleteTile(id) {
+  // If it's a camera tile, kill the ffmpeg stream before removing.
+  const dying = state.config.tiles.find(t => t.id === id);
+  if (dying?.type === 'camera') {
+    window.commandDeck.stopCameraStream(id);
+    delete dying._streamUrl;
+  }
   state.config.tiles = state.config.tiles.filter(t => t.id !== id);
   await saveConfig();
   renderCanvas();
-  showToast('Tile removed', 'success');
+  showToast('Tile deleted', 'success');
+}
+
+// Remove a tile from the current page only (clears its category assignment)
+// so it still exists and is visible on the All page.
+async function removeTileFromPage(tile) {
+  const cat = state.activeCat;
+  if (cat === 'All') return;
+  const t = state.config.tiles.find(t => t.id === tile.id);
+  if (!t) return;
+  // Stop its stream — after unassigning it won't render on this page anymore.
+  if (t.type === 'camera') {
+    window.commandDeck.stopCameraStream(t.id);
+    delete t._streamUrl;
+  }
+  delete t.category;
+  await saveConfig();
+  renderCanvas();
+  showToast(`Removed from "${cat}"`, 'success');
 }
 
 // Modal close / delete bindings
@@ -1095,9 +1285,9 @@ function toggleRearrangeMode(forceState) {
   const newState = forceState !== undefined ? forceState : !state.isRearranging;
   if (newState === state.isRearranging) return;
 
-  // Only allow rearranging in 'All' category with no search
-  if (newState && (state.activeCat !== 'All' || state.searchQuery)) {
-    showToast('Switch to "All" category & clear search to rearrange', 'warn');
+  // Block rearranging if there's an active search query
+  if (newState && state.searchQuery) {
+    showToast('Clear search to rearrange', 'warn');
     return;
   }
 
@@ -1148,19 +1338,24 @@ function initSortable() {
         .map(el => el.dataset.id)
         .filter(Boolean);
 
-      // Reorder state.config.tiles based on these IDs
-      const newTileOrder = [];
-      currentIds.forEach((id) => {
-        const t = state.config.tiles.find(tile => tile.id === id);
-        if (t) newTileOrder.push(t);
+      // Find the existing indices of these tiles in the global config
+      const originalIndices = currentIds
+        .map(id => state.config.tiles.findIndex(t => t.id === id))
+        .filter(i => i !== -1)
+        .sort((a, b) => a - b);
+
+      // Create a copy of the current tiles
+      const newTiles = [...state.config.tiles];
+
+      // Place the sorted IDs back into those original indices in their new order
+      currentIds.forEach((id, i) => {
+        const tile = state.config.tiles.find(t => t.id === id);
+        if (tile && originalIndices[i] !== undefined) {
+          newTiles[originalIndices[i]] = tile;
+        }
       });
 
-      // Append any tiles that were filtered out (just in case, though we only allow rearranging in 'All')
-      state.config.tiles.forEach((t) => {
-        if (!currentIds.includes(t.id)) newTileOrder.push(t);
-      });
-
-      state.config.tiles = newTileOrder;
+      state.config.tiles = newTiles;
       await saveConfig();
       showToast('Layout updated', 'success', 800);
     }

@@ -1,8 +1,12 @@
 'use strict';
 
 const { app, BrowserWindow, ipcMain, Menu, shell, screen } = require('electron');
+app.setName('CommandDeck');
+app.setAppUserModelId('com.commanddeck.app');
 const path    = require('path');
 const fs      = require('fs');
+const http    = require('http');
+const net     = require('net');
 const { exec, spawn } = require('child_process');
 
 // ── Logging ──────────────────────────────────────────────────────────────────
@@ -114,11 +118,11 @@ function createWindow() {
     }
 
     // Apply always-on-top BEFORE showing.
-    // 'screen-saver' is the highest window level on Windows — it stays above
-    // browsers, taskbar, and system notifications, effectively reserving the
-    // monitor exclusively for CommandDeck when enabled.
+    // 'floating' keeps CommandDeck above all normal app windows (maps to
+    // HWND_TOPMOST on Windows) while still allowing system-level overlays
+    // like the screen saver to render on top of it.
     if (settings.alwaysOnTop) {
-      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      mainWindow.setAlwaysOnTop(true, 'floating');
     }
 
     mainWindow.show();
@@ -221,6 +225,131 @@ function sendMediaKey(action) {
     proc.on('close', (code) => resolve({ success: code === 0 }));
     proc.on('error', (err) => resolve({ success: false, error: err.message }));
   });
+}
+
+// ── Camera Streaming (RTSP → MJPEG over HTTP) ────────────────────────────────
+// Each camera tile gets its own HTTP server + ffmpeg child process.
+// Frames are extracted by JPEG SOI/EOI markers and broadcast to all HTTP clients.
+const activeStreams = new Map(); // tileId → { server, ffmpeg, clients, port }
+const pendingStreams = new Map(); // tileId → streamId
+
+function findFreePort(start = 19200) {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.listen(start, '127.0.0.1', () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+    srv.on('error', () => findFreePort(start + 1).then(resolve).catch(reject));
+  });
+}
+
+function extractJpegFrames(buf) {
+  const frames = [];
+  let start = -1;
+  for (let i = 0; i < buf.length - 1; i++) {
+    if (buf[i] === 0xFF && buf[i + 1] === 0xD8) { start = i; }
+    else if (buf[i] === 0xFF && buf[i + 1] === 0xD9 && start !== -1) {
+      frames.push(buf.slice(start, i + 2));
+      start = -1;
+    }
+  }
+  return { frames, remainder: start !== -1 ? buf.slice(start) : Buffer.alloc(0) };
+}
+
+function stopCameraStream(tileId) {
+  pendingStreams.delete(tileId); // Cancel any async start in progress
+  const s = activeStreams.get(tileId);
+  if (!s) return;
+  try { if (s.ffmpeg) s.ffmpeg.kill('SIGKILL'); } catch (_) {}
+  if (s.clients) s.clients.forEach(res => { try { res.end(); } catch (_) {} });
+  if (s.server) try { s.server.close(); } catch (_) {}
+  activeStreams.delete(tileId);
+  logToFile(`[Camera] Stream stopped: ${tileId}`, 'INFO');
+}
+
+async function startCameraStream(tileId, rtspUrl) {
+  stopCameraStream(tileId); // clean up any prior instance
+
+  const streamId = Math.random().toString(36);
+  pendingStreams.set(tileId, streamId);
+
+  const port    = await findFreePort();
+
+  // Abort if another start/stop was called while finding port
+  if (pendingStreams.get(tileId) !== streamId) {
+    return { success: false, error: 'Aborted' };
+  }
+
+  const clients = new Set();
+  let   buf     = Buffer.alloc(0);
+
+  const ffmpeg = spawn('ffmpeg', [
+    '-loglevel', 'quiet',
+    '-rtsp_transport', 'tcp',
+    '-i', rtspUrl,
+    '-vf', 'scale=1280:-1',
+    '-f', 'mjpeg',
+    '-q:v', '4',
+    '-r', '15',
+    'pipe:1',
+  ], { stdio: ['ignore', 'pipe', 'ignore'] });
+
+  // Store immediately so stopCameraStream can kill it if needed
+  activeStreams.set(tileId, { server: null, ffmpeg, clients, port });
+
+  ffmpeg.stdout.on('data', chunk => {
+    buf = Buffer.concat([buf, chunk]);
+    const { frames, remainder } = extractJpegFrames(buf);
+    buf = remainder;
+    if (!frames.length) return;
+    const frame = frames[frames.length - 1]; // send only the latest frame
+    const header = Buffer.from(
+      `--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.length}\r\n\r\n`
+    );
+    const tail = Buffer.from('\r\n');
+    clients.forEach(res => {
+      try { res.write(Buffer.concat([header, frame, tail])); }
+      catch (_) { clients.delete(res); }
+    });
+  });
+
+  ffmpeg.on('error', err => logToFile(`[Camera] ffmpeg error (${tileId}): ${err.message}`, 'ERROR'));
+  ffmpeg.on('close', code => {
+    logToFile(`[Camera] ffmpeg exited (${tileId}) code=${code}`, 'INFO');
+    clients.forEach(res => { try { res.end(); } catch (_) {} });
+  });
+
+  const server = http.createServer((req, res) => {
+    res.writeHead(200, {
+      'Content-Type':  'multipart/x-mixed-replace; boundary=frame',
+      'Cache-Control': 'no-cache, no-store',
+      'Connection':    'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+    clients.add(res);
+    req.on('close', () => clients.delete(res));
+  });
+
+  // Update the stored stream to include the server
+  const currentStream = activeStreams.get(tileId);
+  if (currentStream) currentStream.server = server;
+
+  await new Promise((resolve, reject) => {
+    server.listen(port, '127.0.0.1', resolve);
+    server.on('error', reject);
+  });
+
+  // Final check if aborted during listen
+  if (pendingStreams.get(tileId) !== streamId) {
+    try { ffmpeg.kill('SIGKILL'); } catch (_) {}
+    try { server.close(); } catch (_) {}
+    activeStreams.delete(tileId);
+    return { success: false, error: 'Aborted during listen' };
+  }
+
+  logToFile(`[Camera] Stream started: ${tileId} → port ${port}`, 'INFO');
+  return { success: true, url: `http://127.0.0.1:${port}` };
 }
 
 // ── IPC Handlers ─────────────────────────────────────────────────────────────
@@ -386,11 +515,11 @@ ipcMain.handle('set-window-behavior', (_e, { alwaysOnTop, hideHeader }) => {
     // Persist both settings atomically
     writeSettingsSync({ alwaysOnTop: !!alwaysOnTop, hideHeader: !!hideHeader });
 
-    // Apply always-on-top at the highest level ('screen-saver') so CommandDeck
-    // stays above every other application window on the monitor, effectively
-    // preventing accidental use of that display by any other program.
+    // Apply always-on-top at the 'floating' level so CommandDeck stays above
+    // normal app windows (HWND_TOPMOST) while still allowing system overlays
+    // like the Windows screen saver to render in front of it.
     if (alwaysOnTop) {
-      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      mainWindow.setAlwaysOnTop(true, 'floating');
     } else {
       mainWindow.setAlwaysOnTop(false);
     }
@@ -427,4 +556,17 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   if (statsTimer) clearInterval(statsTimer);
+  // Shut down all active camera streams cleanly
+  activeStreams.forEach((_, tileId) => stopCameraStream(tileId));
+});
+
+// Camera stream IPC
+ipcMain.handle('camera:start', async (_e, tileId, rtspUrl) => {
+  try { return await startCameraStream(tileId, rtspUrl); }
+  catch (err) { return { success: false, error: err.message }; }
+});
+
+ipcMain.handle('camera:stop', (_e, tileId) => {
+  stopCameraStream(tileId);
+  return { success: true };
 });
